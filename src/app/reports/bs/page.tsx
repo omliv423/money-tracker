@@ -33,6 +33,7 @@ interface CategoryBreakdown {
   categoryId: string;
   categoryName: string;
   amount: number;
+  lineType: string;
 }
 
 interface AccountPayable {
@@ -122,21 +123,27 @@ export default function BSReportPage() {
         payable.totalAmount += tx.total_amount;
         payable.transactionCount += 1;
 
-        // カテゴリ別内訳（expense行のみ）
+        // カテゴリ別内訳（expense/asset両方を含む）
         (tx.transaction_lines || []).forEach((line: any) => {
-          if (line.line_type !== "expense") return;
-          if (!line.category) return;
+          // income/liabilityは除外
+          if (line.line_type !== "expense" && line.line_type !== "asset") return;
 
+          const categoryId = line.category?.id || `${line.line_type}-uncategorized`;
+          const categoryName = line.category?.name || (line.line_type === "asset" ? "立替金" : "未分類");
+
+          // line_typeごとに分けて集計
+          const key = `${categoryId}-${line.line_type}`;
           const existingCat = payable.categories.find(
-            (c) => c.categoryId === line.category.id
+            (c) => c.categoryId === key
           );
           if (existingCat) {
             existingCat.amount += line.amount;
           } else {
             payable.categories.push({
-              categoryId: line.category.id,
-              categoryName: line.category.name,
+              categoryId: key,
+              categoryName: categoryName,
               amount: line.amount,
+              lineType: line.line_type,
             });
           }
         });
@@ -484,8 +491,11 @@ export default function BSReportPage() {
                                   <div className="flex items-center gap-2">
                                     <Tag className="w-3 h-3 text-muted-foreground" />
                                     <span>{cat.categoryName}</span>
+                                    {cat.lineType === "asset" && (
+                                      <span className="text-xs px-1.5 py-0.5 bg-income/20 text-income rounded">立替</span>
+                                    )}
                                   </div>
-                                  <span className="tabular-nums">
+                                  <span className={`tabular-nums ${cat.lineType === "asset" ? "text-income" : ""}`}>
                                     ¥{cat.amount.toLocaleString("ja-JP")}
                                   </span>
                                 </div>
