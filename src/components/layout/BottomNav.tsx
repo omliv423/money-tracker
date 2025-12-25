@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "framer-motion";
 import {
   PlusCircle,
   List,
@@ -42,11 +41,7 @@ export function BottomNav() {
               )}
             >
               {isActive && (
-                <motion.div
-                  layoutId="activeTab"
-                  className="absolute -top-0.5 w-8 h-1 bg-primary rounded-full"
-                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                />
+                <div className="absolute -top-0.5 w-8 h-1 bg-primary rounded-full" />
               )}
               <Icon className="w-5 h-5" />
               <span className="text-xs mt-1 font-medium">{item.label}</span>

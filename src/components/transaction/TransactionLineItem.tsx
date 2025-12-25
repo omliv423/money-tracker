@@ -55,17 +55,16 @@ export function TransactionLineItem({
   // Local state for amount input to prevent formatting while typing
   const [amountInput, setAmountInput] = useState("");
   const [isAmountFocused, setIsAmountFocused] = useState(false);
-  const isEditingRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync local state when line.amount changes from external sources
+  // Sync local state when line.amount changes from external sources (only when not focused)
   useEffect(() => {
-    if (!isEditingRef.current) {
+    if (!isAmountFocused) {
       setAmountInput(line.amount > 0 ? line.amount.toString() : "");
     }
-  }, [line.amount]);
+  }, [line.amount, isAmountFocused]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    isEditingRef.current = true;
     const rawValue = e.target.value.replace(/[^0-9]/g, "");
     setAmountInput(rawValue);
     const numValue = parseInt(rawValue, 10) || 0;
@@ -74,15 +73,17 @@ export function TransactionLineItem({
 
   const handleAmountBlur = () => {
     setIsAmountFocused(false);
-    isEditingRef.current = false;
-    // Update local state to match the actual value
-    setAmountInput(line.amount > 0 ? line.amount.toString() : "");
   };
 
-  const handleAmountFocus = () => {
+  const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     setIsAmountFocused(true);
-    // Show raw number without formatting when focused
-    setAmountInput(line.amount > 0 ? line.amount.toString() : "");
+    // Set raw value and select all so typing replaces existing value
+    const rawValue = line.amount > 0 ? line.amount.toString() : "";
+    setAmountInput(rawValue);
+    // Select all text after React updates the input value
+    setTimeout(() => {
+      e.target.select();
+    }, 0);
   };
 
   const isAssetOrLiability = line.lineType === "asset" || line.lineType === "liability";

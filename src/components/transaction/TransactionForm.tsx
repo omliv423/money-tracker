@@ -80,19 +80,21 @@ export function TransactionForm() {
     fetchData();
   }, []);
 
-  // Calculate total allocated amount (sum of all line amounts)
-  const allocatedAmount = lines.reduce((sum, line) => sum + line.amount, 0);
-
-  // Remaining amount to allocate
-  const remainingAmount = totalAmount - allocatedAmount;
-
-  // Calculate income vs expense for display purposes
+  // Calculate income and expense totals
   const incomeAmount = lines
     .filter((line) => line.lineType === "income")
     .reduce((sum, line) => sum + line.amount, 0);
   const expenseAmount = lines
     .filter((line) => line.lineType === "expense" || line.lineType === "asset" || line.lineType === "liability")
     .reduce((sum, line) => sum + line.amount, 0);
+
+  // Net amount (income - expense), can be positive or negative
+  const netAmount = incomeAmount - expenseAmount;
+
+  // Remaining: totalAmount should equal the absolute net amount
+  // e.g., income 530,000 - expense 124,021 = net 405,979
+  // if totalAmount is 405,979, remaining is 0
+  const remainingAmount = totalAmount - Math.abs(netAmount);
 
   // Determine if this is primarily an income transaction (for UI labels)
   const isIncomeTransaction = incomeAmount > expenseAmount;

@@ -132,9 +132,14 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    overflow-anchor: auto;
+    scroll-behavior: auto;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body), system-ui, sans-serif;
+    overflow-x: hidden;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading), system-ui, sans-serif;
