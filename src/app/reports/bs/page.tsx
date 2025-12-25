@@ -4,8 +4,28 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Wallet, CreditCard, Users, Scale, ChevronDown, ChevronRight, Tag } from "lucide-react";
+import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, Tag, PieChart as PieChartIcon } from "lucide-react";
 import { supabase, type Tables } from "@/lib/supabase";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+} from "recharts";
+
+const COLORS = {
+  asset: "#10b981",
+  liability: "#f43f5e",
+  netPositive: "#10b981",
+  netNegative: "#f43f5e",
+};
 
 type Account = Tables<"accounts">;
 
@@ -36,6 +56,7 @@ export default function BSReportPage() {
   const [receivables, setReceivables] = useState<CounterpartyBalance[]>([]);
   const [liabilities, setLiabilities] = useState<CounterpartyBalance[]>([]);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+  const [showChart, setShowChart] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -71,7 +92,6 @@ export default function BSReportPage() {
 
       // Aggregate by account
       const accountPayableMap = new Map<string, AccountPayable>();
-      const countedTransactionIds = new Set<string>();
 
       (unpaidTransactions || []).forEach((tx: any) => {
         if (!tx.account) return;
@@ -79,12 +99,12 @@ export default function BSReportPage() {
         const accountId = tx.account.id;
         const accountName = tx.account.name;
 
-        // expense/incomeタイプの行だけを集計（asset/liabilityは別途管理）
-        const relevantLines = (tx.transaction_lines || []).filter(
-          (line: any) => line.line_type === "expense" || line.line_type === "income"
+        // expense行があるかチェック（支出を含む取引のみ未払金として計上）
+        const hasExpense = (tx.transaction_lines || []).some(
+          (line: any) => line.line_type === "expense"
         );
 
-        if (relevantLines.length === 0) return;
+        if (!hasExpense) return;
 
         if (!accountPayableMap.has(accountId)) {
           accountPayableMap.set(accountId, {
@@ -98,11 +118,15 @@ export default function BSReportPage() {
 
         const payable = accountPayableMap.get(accountId)!;
 
-        // Aggregate by category (expense/incomeのみ)
-        relevantLines.forEach((line: any) => {
-          payable.totalAmount += line.amount;
+        // 取引全体のtotal_amountを未払金として計上（立替を含む場合も全額カード払い）
+        payable.totalAmount += tx.total_amount;
+        payable.transactionCount += 1;
 
+        // カテゴリ別内訳（expense行のみ）
+        (tx.transaction_lines || []).forEach((line: any) => {
+          if (line.line_type !== "expense") return;
           if (!line.category) return;
+
           const existingCat = payable.categories.find(
             (c) => c.categoryId === line.category.id
           );
@@ -116,13 +140,6 @@ export default function BSReportPage() {
             });
           }
         });
-
-        // Count transaction only once per account
-        const txKey = `${tx.id}-${accountId}`;
-        if (!countedTransactionIds.has(txKey)) {
-          payable.transactionCount += 1;
-          countedTransactionIds.add(txKey);
-        }
       });
 
       const payableList = Array.from(accountPayableMap.values())
@@ -267,6 +284,97 @@ export default function BSReportPage() {
             </p>
           </motion.div>
         </div>
+
+        {/* Chart Toggle Button */}
+        <button
+          onClick={() => setShowChart(!showChart)}
+          className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+            showChart
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-card border-border hover:bg-accent"
+          }`}
+        >
+          <PieChartIcon className="w-4 h-4" />
+          <span className="text-sm">資産・負債グラフ</span>
+        </button>
+
+        {/* BS Chart - T字型 */}
+        <AnimatePresence>
+          {showChart && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-card rounded-xl p-4 border border-border"
+            >
+              <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
+                貸借対照表
+              </h3>
+              {/* T字型レイアウト */}
+              <div className="grid grid-cols-2 gap-2">
+                {/* 左側：資産 */}
+                <div className="border-r border-border pr-2">
+                  <p className="text-xs text-muted-foreground text-center mb-2 font-medium">資産</p>
+                  <div className="space-y-1">
+                    {receivables.length > 0 ? (
+                      receivables.map((item) => (
+                        <div key={item.counterparty} className="flex justify-between text-xs">
+                          <span className="truncate">{item.counterparty}</span>
+                          <span className="text-income ml-1">¥{item.amount.toLocaleString()}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center">-</p>
+                    )}
+                  </div>
+                  <div className="border-t border-border mt-2 pt-2 flex justify-between text-sm font-bold">
+                    <span>合計</span>
+                    <span className="text-income">¥{totalAssets.toLocaleString()}</span>
+                  </div>
+                </div>
+                {/* 右側：負債 + 純資産 */}
+                <div className="pl-2">
+                  <p className="text-xs text-muted-foreground text-center mb-2 font-medium">負債・純資産</p>
+                  <div className="space-y-1">
+                    {/* 未払金 */}
+                    {payablesByAccount.map((p) => (
+                      <div key={p.accountId} className="flex justify-between text-xs">
+                        <span className="truncate">{p.accountName}</span>
+                        <span className="text-expense ml-1">¥{p.totalAmount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {/* 借入金 */}
+                    {liabilities.map((item) => (
+                      <div key={item.counterparty} className="flex justify-between text-xs">
+                        <span className="truncate">{item.counterparty}</span>
+                        <span className="text-expense ml-1">¥{item.amount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {payablesByAccount.length === 0 && liabilities.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center">-</p>
+                    )}
+                  </div>
+                  <div className="border-t border-border mt-2 pt-2 space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span>負債計</span>
+                      <span className="text-expense">¥{totalLiabilities.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold">
+                      <span>純資産</span>
+                      <span className={netPosition >= 0 ? "text-income" : "text-expense"}>
+                        ¥{netPosition.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm font-bold border-t border-border pt-1">
+                      <span>合計</span>
+                      <span>¥{(totalLiabilities + netPosition).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* 資産の部 */}
         <div className="space-y-4">

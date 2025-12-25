@@ -12,10 +12,21 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Wallet,
+  BarChart3,
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, addMonths, subMonths } from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase } from "@/lib/supabase";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+} from "recharts";
 
 interface TransactionLine {
   amount: number;
@@ -49,6 +60,13 @@ interface AccountCashFlow {
   transactions: { description: string; amount: number; counterparty: string | null }[];
 }
 
+interface MonthlyData {
+  month: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+}
+
 export default function CFReportPage() {
   const router = useRouter();
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -57,6 +75,8 @@ export default function CFReportPage() {
   const [totalInflow, setTotalInflow] = useState(0);
   const [totalOutflow, setTotalOutflow] = useState(0);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyData[]>([]);
+  const [showChart, setShowChart] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -149,6 +169,43 @@ export default function CFReportPage() {
       setCashFlowByAccount(accountList);
       setTotalInflow(accountList.reduce((sum, a) => sum + a.inflow, 0));
       setTotalOutflow(accountList.reduce((sum, a) => sum + a.outflow, 0));
+
+      // 過去6ヶ月分の月次推移を取得
+      const monthlyData: MonthlyData[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const targetMonth = subMonths(currentMonth, i);
+        const mStart = format(startOfMonth(targetMonth), "yyyy-MM-dd");
+        const mEnd = format(endOfMonth(targetMonth), "yyyy-MM-dd");
+
+        const { data: monthTx } = await supabase
+          .from("transactions")
+          .select(`
+            transaction_lines(amount, line_type)
+          `)
+          .gte("payment_date", mStart)
+          .lte("payment_date", mEnd);
+
+        let monthInflow = 0;
+        let monthOutflow = 0;
+
+        (monthTx || []).forEach((tx: any) => {
+          (tx.transaction_lines || []).forEach((line: any) => {
+            if (line.line_type === "income") {
+              monthInflow += line.amount;
+            } else if (line.line_type === "expense") {
+              monthOutflow += line.amount;
+            }
+          });
+        });
+
+        monthlyData.push({
+          month: format(targetMonth, "M月", { locale: ja }),
+          inflow: monthInflow,
+          outflow: monthOutflow,
+          net: monthInflow - monthOutflow,
+        });
+      }
+      setMonthlyTrend(monthlyData);
       setIsLoading(false);
     }
 
@@ -223,6 +280,64 @@ export default function CFReportPage() {
         <div className="bg-secondary/50 rounded-xl p-3 text-sm text-muted-foreground text-center">
           支払日ベースの実際のお金の動き
         </div>
+
+        {/* Chart Toggle Button */}
+        <button
+          onClick={() => setShowChart(!showChart)}
+          className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+            showChart
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-card border-border hover:bg-accent"
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span className="text-sm">月次推移グラフ</span>
+        </button>
+
+        {/* Bar Chart - 月次推移 */}
+        <AnimatePresence>
+          {showChart && monthlyTrend.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-card rounded-xl p-4 border border-border"
+            >
+              <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
+                過去6ヶ月のキャッシュフロー推移
+              </h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyTrend}>
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(value) =>
+                        value >= 10000 || value <= -10000
+                          ? `${(value / 10000).toFixed(0)}万`
+                          : value
+                      }
+                    />
+                    <Tooltip
+                      formatter={(value: number) =>
+                        `¥${value.toLocaleString("ja-JP")}`
+                      }
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 12 }}
+                      formatter={(value) =>
+                        value === "inflow" ? "入金" : value === "outflow" ? "出金" : "純増減"
+                      }
+                    />
+                    <ReferenceLine y={0} stroke="#666" />
+                    <Bar dataKey="inflow" name="inflow" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="outflow" name="outflow" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-3 gap-2">

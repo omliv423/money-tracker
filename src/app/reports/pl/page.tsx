@@ -11,6 +11,8 @@ import {
   ChevronDown,
   TrendingUp,
   TrendingDown,
+  PieChart as PieChartIcon,
+  BarChart3,
 } from "lucide-react";
 import {
   format,
@@ -22,6 +24,24 @@ import {
 } from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase } from "@/lib/supabase";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+} from "recharts";
+
+// カテゴリ別の色
+const COLORS = [
+  "#f43f5e", "#fb923c", "#facc15", "#4ade80", "#22d3ee",
+  "#818cf8", "#e879f9", "#94a3b8", "#f87171", "#fbbf24",
+];
 
 interface TransactionLine {
   id: string;
@@ -52,6 +72,13 @@ interface ParentCategorySummary {
   children: CategorySummary[];
 }
 
+interface MonthlyData {
+  month: string;
+  income: number;
+  expense: number;
+  net: number;
+}
+
 export default function PLReportPage() {
   const router = useRouter();
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -61,6 +88,8 @@ export default function PLReportPage() {
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyData[]>([]);
+  const [showChart, setShowChart] = useState<"pie" | "bar" | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -219,6 +248,63 @@ export default function PLReportPage() {
       setExpenseByParent(expenseHierarchy);
       setTotalIncome(incomeHierarchy.reduce((sum, c) => sum + c.amount, 0));
       setTotalExpense(expenseHierarchy.reduce((sum, c) => sum + c.amount, 0));
+
+      // 過去6ヶ月分の月次推移を計算
+      const monthlyData: MonthlyData[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const targetMonth = subMonths(currentMonth, i);
+        const mStart = startOfMonth(targetMonth);
+        const mEnd = endOfMonth(targetMonth);
+
+        let monthIncome = 0;
+        let monthExpense = 0;
+
+        (lines || []).forEach((line) => {
+          const typedLine = line as unknown as TransactionLine;
+          if (!typedLine.transaction || !typedLine.category) return;
+          if (typedLine.line_type !== "income" && typedLine.line_type !== "expense") return;
+
+          const txDate = new Date(typedLine.transaction.date);
+          let amountForMonth = 0;
+
+          if (
+            typedLine.amortization_months &&
+            typedLine.amortization_months > 1 &&
+            typedLine.amortization_start &&
+            typedLine.amortization_end
+          ) {
+            const amortStart = new Date(typedLine.amortization_start);
+            const amortEnd = new Date(typedLine.amortization_end);
+            if (
+              isWithinInterval(mStart, { start: amortStart, end: amortEnd }) ||
+              isWithinInterval(mEnd, { start: amortStart, end: amortEnd }) ||
+              (mStart <= amortStart && mEnd >= amortEnd)
+            ) {
+              amountForMonth = Math.round(typedLine.amount / typedLine.amortization_months);
+            }
+          } else {
+            if (txDate >= mStart && txDate <= mEnd) {
+              amountForMonth = typedLine.amount;
+            }
+          }
+
+          if (amountForMonth > 0) {
+            if (typedLine.line_type === "income") {
+              monthIncome += amountForMonth;
+            } else {
+              monthExpense += amountForMonth;
+            }
+          }
+        });
+
+        monthlyData.push({
+          month: format(targetMonth, "M月", { locale: ja }),
+          income: monthIncome,
+          expense: monthExpense,
+          net: monthIncome - monthExpense,
+        });
+      }
+      setMonthlyTrend(monthlyData);
       setIsLoading(false);
     }
 
@@ -405,6 +491,137 @@ export default function PLReportPage() {
             </p>
           </motion.div>
         </div>
+
+        {/* Chart Toggle Buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowChart(showChart === "pie" ? null : "pie")}
+            className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+              showChart === "pie"
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card border-border hover:bg-accent"
+            }`}
+          >
+            <PieChartIcon className="w-4 h-4" />
+            <span className="text-sm">費用の割合</span>
+          </button>
+          <button
+            onClick={() => setShowChart(showChart === "bar" ? null : "bar")}
+            className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+              showChart === "bar"
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card border-border hover:bg-accent"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span className="text-sm">月次推移</span>
+          </button>
+        </div>
+
+        {/* Pie Chart - 費用の割合 */}
+        <AnimatePresence>
+          {showChart === "pie" && expenseByParent.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-card rounded-xl p-4 border border-border"
+            >
+              <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
+                支出の内訳（カテゴリ別）
+              </h3>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={expenseByParent.map((cat) => ({
+                        name: cat.categoryName,
+                        value: cat.amount,
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {expenseByParent.map((_, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) =>
+                        `¥${value.toLocaleString("ja-JP")}`
+                      }
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Legend */}
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                {expenseByParent.map((cat, index) => (
+                  <div key={cat.categoryId} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <div
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                      />
+                      <span className="truncate">{cat.categoryName}</span>
+                    </div>
+                    <span className="text-muted-foreground ml-1 flex-shrink-0">
+                      {totalExpense > 0 ? `${((cat.amount / totalExpense) * 100).toFixed(0)}%` : "0%"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Bar Chart - 月次推移 */}
+        <AnimatePresence>
+          {showChart === "bar" && monthlyTrend.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-card rounded-xl p-4 border border-border"
+            >
+              <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
+                過去6ヶ月の収支推移
+              </h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyTrend}>
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(value) =>
+                        value >= 10000 ? `${(value / 10000).toFixed(0)}万` : value
+                      }
+                    />
+                    <Tooltip
+                      formatter={(value: number) =>
+                        `¥${value.toLocaleString("ja-JP")}`
+                      }
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 12 }}
+                      formatter={(value) =>
+                        value === "income" ? "収入" : value === "expense" ? "支出" : "収支"
+                      }
+                    />
+                    <Bar dataKey="income" name="income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="expense" name="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Income Breakdown */}
         <div>
