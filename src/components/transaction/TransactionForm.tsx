@@ -83,6 +83,9 @@ export function TransactionForm() {
   const allocatedAmount = lines.reduce((sum, line) => sum + line.amount, 0);
   const remainingAmount = totalAmount - allocatedAmount;
 
+  // Determine if this is primarily an income transaction
+  const isIncomeTransaction = lines.length > 0 && lines[0].lineType === "income";
+
   const handleNext = () => {
     if (totalAmount > 0) {
       if (lines[0].amount === 0) {
@@ -286,8 +289,8 @@ export function TransactionForm() {
               className="bg-card rounded-xl p-4 flex items-center justify-between cursor-pointer hover:bg-accent transition-colors"
             >
               <div className="text-sm text-muted-foreground">合計金額</div>
-              <div className="font-heading text-2xl font-bold tabular-nums">
-                ¥{totalAmount.toLocaleString("ja-JP")}
+              <div className={`font-heading text-2xl font-bold tabular-nums ${isIncomeTransaction ? "text-income" : "text-expense"}`}>
+                {isIncomeTransaction ? "+" : "-"}¥{totalAmount.toLocaleString("ja-JP")}
               </div>
             </div>
 
@@ -306,7 +309,7 @@ export function TransactionForm() {
               </div>
               <div className="flex items-center justify-between">
                 <label className="text-sm text-muted-foreground flex items-center gap-2">
-                  <CreditCard className="w-4 h-4" /> 支払日
+                  <CreditCard className="w-4 h-4" /> {isIncomeTransaction ? "入金日" : "支払日"}
                 </label>
                 <Input
                   type="date"
@@ -317,15 +320,15 @@ export function TransactionForm() {
               </div>
               {accrualDate !== paymentDate && (
                 <p className="text-xs text-muted-foreground text-center">
-                  ※ 発生日と支払日が異なる場合、未払金として計上されます
+                  ※ 発生日と{isIncomeTransaction ? "入金日" : "支払日"}が異なる場合、{isIncomeTransaction ? "未収金" : "未払金"}として計上されます
                 </p>
               )}
             </div>
 
-            {/* Payment Method */}
+            {/* Payment Method / Deposit Account */}
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground flex items-center gap-1">
-                <Wallet className="w-3 h-3" /> 支払い方法
+                <Wallet className="w-3 h-3" /> {isIncomeTransaction ? "入金先" : "支払い方法"}
               </label>
               <Select value={accountId} onValueChange={setAccountId}>
                 <SelectTrigger className="w-full">
@@ -351,7 +354,7 @@ export function TransactionForm() {
               </label>
               <Input
                 type="text"
-                placeholder="何に使った？"
+                placeholder={isIncomeTransaction ? "何の収入？" : "何に使った？"}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
@@ -361,7 +364,7 @@ export function TransactionForm() {
             {counterparties.length > 0 && (
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Store className="w-3 h-3" /> 相手先（任意）
+                  <Store className="w-3 h-3" /> {isIncomeTransaction ? "入金元（任意）" : "相手先（任意）"}
                 </label>
                 <Select
                   value={counterpartyId || "none"}
