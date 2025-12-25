@@ -136,6 +136,11 @@ export default function PLReportPage() {
 
         if (amountForMonth === 0) return;
 
+        // Only include income and expense in PL (skip asset/liability)
+        if (typedLine.line_type !== "income" && typedLine.line_type !== "expense") {
+          return;
+        }
+
         const targetMap = typedLine.line_type === "income" ? incomeMap : expenseMap;
 
         const existing = targetMap.get(categoryId) || {

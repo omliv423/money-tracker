@@ -245,7 +245,7 @@ export function TransactionForm() {
       {/* Header */}
       <div className="text-center">
         <h1 className="font-heading text-2xl font-bold">
-          {step === "amount" ? "支出を記録" : "詳細を入力"}
+          {step === "amount" ? "取引を登録" : "詳細を入力"}
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
           {format(new Date(accrualDate), "yyyy年M月d日(E)", { locale: ja })}
@@ -292,29 +292,34 @@ export function TransactionForm() {
             </div>
 
             {/* Dates */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> 発生日
+            <div className="bg-card rounded-xl p-4 border border-border space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Calendar className="w-4 h-4" /> 発生日
                 </label>
                 <Input
                   type="date"
                   value={accrualDate}
                   onChange={(e) => setAccrualDate(e.target.value)}
-                  className="w-full"
+                  className="w-40 text-right"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <CreditCard className="w-3 h-3" /> 支払日
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-muted-foreground flex items-center gap-2">
+                  <CreditCard className="w-4 h-4" /> 支払日
                 </label>
                 <Input
                   type="date"
                   value={paymentDate}
                   onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full"
+                  className="w-40 text-right"
                 />
               </div>
+              {accrualDate !== paymentDate && (
+                <p className="text-xs text-muted-foreground text-center">
+                  ※ 発生日と支払日が異なる場合、未払金として計上されます
+                </p>
+              )}
             </div>
 
             {/* Payment Method */}
