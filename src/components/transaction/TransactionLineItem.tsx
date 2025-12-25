@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Trash2, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,10 +53,19 @@ export function TransactionLineItem({
   canDelete,
 }: TransactionLineItemProps) {
   // Local state for amount input to prevent formatting while typing
-  const [amountInput, setAmountInput] = useState(line.amount > 0 ? line.amount.toString() : "");
+  const [amountInput, setAmountInput] = useState("");
   const [isAmountFocused, setIsAmountFocused] = useState(false);
+  const isEditingRef = useRef(false);
+
+  // Sync local state when line.amount changes from external sources
+  useEffect(() => {
+    if (!isEditingRef.current) {
+      setAmountInput(line.amount > 0 ? line.amount.toString() : "");
+    }
+  }, [line.amount]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    isEditingRef.current = true;
     const rawValue = e.target.value.replace(/[^0-9]/g, "");
     setAmountInput(rawValue);
     const numValue = parseInt(rawValue, 10) || 0;
@@ -65,6 +74,7 @@ export function TransactionLineItem({
 
   const handleAmountBlur = () => {
     setIsAmountFocused(false);
+    isEditingRef.current = false;
     // Update local state to match the actual value
     setAmountInput(line.amount > 0 ? line.amount.toString() : "");
   };

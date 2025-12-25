@@ -80,7 +80,13 @@ export function TransactionForm() {
     fetchData();
   }, []);
 
-  // Calculate allocated amounts by type
+  // Calculate total allocated amount (sum of all line amounts)
+  const allocatedAmount = lines.reduce((sum, line) => sum + line.amount, 0);
+
+  // Remaining amount to allocate
+  const remainingAmount = totalAmount - allocatedAmount;
+
+  // Calculate income vs expense for display purposes
   const incomeAmount = lines
     .filter((line) => line.lineType === "income")
     .reduce((sum, line) => sum + line.amount, 0);
@@ -88,13 +94,7 @@ export function TransactionForm() {
     .filter((line) => line.lineType === "expense" || line.lineType === "asset" || line.lineType === "liability")
     .reduce((sum, line) => sum + line.amount, 0);
 
-  // Net amount = income - expense (can be positive or negative)
-  const netAmount = incomeAmount - expenseAmount;
-
-  // For balance checking, compare total to absolute net
-  const remainingAmount = totalAmount - Math.abs(netAmount);
-
-  // Determine if this is primarily an income transaction
+  // Determine if this is primarily an income transaction (for UI labels)
   const isIncomeTransaction = incomeAmount > expenseAmount;
 
   const handleNext = () => {
@@ -266,34 +266,21 @@ export function TransactionForm() {
         </p>
       </div>
 
-      <AnimatePresence mode="wait">
-        {step === "amount" ? (
-          <motion.div
-            key="amount"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-6"
-          >
-            <AmountInput value={totalAmount} onChange={setTotalAmount} />
+      {step === "amount" ? (
+        <div className="space-y-6">
+          <AmountInput value={totalAmount} onChange={setTotalAmount} />
 
-            <Button
-              onClick={handleNext}
-              disabled={totalAmount === 0}
-              className="w-full h-14 text-lg font-medium"
-              size="lg"
-            >
-              次へ
-            </Button>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="details"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="space-y-4"
+          <Button
+            onClick={handleNext}
+            disabled={totalAmount === 0}
+            className="w-full h-14 text-lg font-medium"
+            size="lg"
           >
+            次へ
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4">
             {/* Amount Display */}
             <div
               onClick={handleBack}
@@ -407,18 +394,16 @@ export function TransactionForm() {
                 )}
               </div>
 
-              <AnimatePresence>
-                {lines.map((line, index) => (
-                  <TransactionLineItem
-                    key={line.id}
-                    line={line}
-                    categories={categories}
-                    onChange={(updated) => handleUpdateLine(index, updated)}
-                    onDelete={() => handleDeleteLine(index)}
-                    canDelete={lines.length > 1}
-                  />
-                ))}
-              </AnimatePresence>
+              {lines.map((line, index) => (
+                <TransactionLineItem
+                  key={line.id}
+                  line={line}
+                  categories={categories}
+                  onChange={(updated) => handleUpdateLine(index, updated)}
+                  onDelete={() => handleDeleteLine(index)}
+                  canDelete={lines.length > 1}
+                />
+              ))}
 
               <Button
                 variant="outline"
@@ -450,9 +435,8 @@ export function TransactionForm() {
                 </>
               )}
             </Button>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
     </div>
   );
 }
