@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Trash2, ChevronDown } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,7 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Category, LineType } from "@/types/database";
+import type { Tables } from "@/lib/supabase";
+
+type Category = Tables<"categories">;
+type LineType = "income" | "expense" | "asset" | "liability";
 
 export interface LineItemData {
   id: string;

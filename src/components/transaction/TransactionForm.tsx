@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Check, Calendar, Wallet, FileText } from "lucide-react";
 import { format } from "date-fns";
@@ -16,43 +16,25 @@ import {
 } from "@/components/ui/select";
 import { AmountInput } from "./AmountInput";
 import { TransactionLineItem, type LineItemData } from "./TransactionLineItem";
-import type { Account, Category } from "@/types/database";
+import { supabase, type Tables } from "@/lib/supabase";
 
-// Demo data - will be replaced with Supabase data
-const demoAccounts: Account[] = [
-  { id: "1", name: "楽天銀行", type: "bank", owner: "self", initial_balance: 0, is_active: true, created_at: "" },
-  { id: "2", name: "三井住友銀行", type: "bank", owner: "self", initial_balance: 0, is_active: true, created_at: "" },
-  { id: "3", name: "PayPay", type: "cash", owner: "self", initial_balance: 0, is_active: true, created_at: "" },
-  { id: "4", name: "現金", type: "cash", owner: "self", initial_balance: 0, is_active: true, created_at: "" },
-  { id: "5", name: "共同カード", type: "card", owner: "shared", initial_balance: 0, is_active: true, created_at: "" },
-];
-
-const demoCategories: Category[] = [
-  { id: "1", name: "食費", type: "expense", is_active: true, created_at: "" },
-  { id: "2", name: "交通費", type: "expense", is_active: true, created_at: "" },
-  { id: "3", name: "住居費", type: "expense", is_active: true, created_at: "" },
-  { id: "4", name: "光熱費", type: "expense", is_active: true, created_at: "" },
-  { id: "5", name: "通信費", type: "expense", is_active: true, created_at: "" },
-  { id: "6", name: "娯楽費", type: "expense", is_active: true, created_at: "" },
-  { id: "7", name: "日用品", type: "expense", is_active: true, created_at: "" },
-  { id: "8", name: "医療費", type: "expense", is_active: true, created_at: "" },
-  { id: "9", name: "被服費", type: "expense", is_active: true, created_at: "" },
-  { id: "10", name: "その他", type: "expense", is_active: true, created_at: "" },
-  { id: "11", name: "給与", type: "income", is_active: true, created_at: "" },
-  { id: "12", name: "副収入", type: "income", is_active: true, created_at: "" },
-  { id: "13", name: "立替金", type: "transfer", is_active: true, created_at: "" },
-];
+type Account = Tables<"accounts">;
+type Category = Tables<"categories">;
 
 function generateId() {
   return Math.random().toString(36).substring(2, 9);
 }
 
 export function TransactionForm() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [step, setStep] = useState<"amount" | "details">("amount");
   const [totalAmount, setTotalAmount] = useState(0);
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [description, setDescription] = useState("");
-  const [accountId, setAccountId] = useState(demoAccounts[0].id);
+  const [accountId, setAccountId] = useState("");
   const [lines, setLines] = useState<LineItemData[]>([
     {
       id: generateId(),
@@ -63,13 +45,36 @@ export function TransactionForm() {
     },
   ]);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Fetch accounts and categories on mount
+  useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true);
+      const [accountsRes, categoriesRes] = await Promise.all([
+        supabase.from("accounts").select("*").eq("is_active", true).order("name"),
+        supabase.from("categories").select("*").eq("is_active", true).order("name"),
+      ]);
+
+      if (accountsRes.data) {
+        setAccounts(accountsRes.data);
+        if (accountsRes.data.length > 0) {
+          setAccountId(accountsRes.data[0].id);
+        }
+      }
+      if (categoriesRes.data) {
+        setCategories(categoriesRes.data);
+      }
+      setIsLoading(false);
+    }
+    fetchData();
+  }, []);
 
   const allocatedAmount = lines.reduce((sum, line) => sum + line.amount, 0);
   const remainingAmount = totalAmount - allocatedAmount;
 
   const handleNext = () => {
     if (totalAmount > 0) {
-      // Set the first line amount to total if not allocated yet
       if (lines[0].amount === 0) {
         setLines([{ ...lines[0], amount: totalAmount }]);
       }
@@ -108,23 +113,60 @@ export function TransactionForm() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    // TODO: Save to Supabase
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    setSaveMessage(null);
 
-    // Reset form
-    setTotalAmount(0);
-    setDescription("");
-    setLines([
-      {
-        id: generateId(),
-        amount: 0,
-        categoryId: "",
-        lineType: "expense",
-        counterparty: null,
-      },
-    ]);
-    setStep("amount");
-    setIsSaving(false);
+    try {
+      // Insert transaction
+      const { data: transaction, error: transactionError } = await supabase
+        .from("transactions")
+        .insert({
+          date,
+          description,
+          account_id: accountId,
+          total_amount: totalAmount,
+        })
+        .select()
+        .single();
+
+      if (transactionError) throw transactionError;
+
+      // Insert transaction lines
+      const lineInserts = lines.map((line) => ({
+        transaction_id: transaction.id,
+        amount: line.amount,
+        category_id: line.categoryId,
+        line_type: line.lineType,
+        counterparty: line.counterparty,
+        is_settled: false,
+      }));
+
+      const { error: linesError } = await supabase
+        .from("transaction_lines")
+        .insert(lineInserts);
+
+      if (linesError) throw linesError;
+
+      // Reset form
+      setTotalAmount(0);
+      setDescription("");
+      setLines([
+        {
+          id: generateId(),
+          amount: 0,
+          categoryId: "",
+          lineType: "expense",
+          counterparty: null,
+        },
+      ]);
+      setStep("amount");
+      setSaveMessage("保存しました！");
+      setTimeout(() => setSaveMessage(null), 2000);
+    } catch (error) {
+      console.error("Save error:", error);
+      setSaveMessage("エラーが発生しました");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const canSave =
@@ -133,8 +175,34 @@ export function TransactionForm() {
     allocatedAmount === totalAmount &&
     lines.every((line) => line.amount > 0 && line.categoryId);
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+          className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Success Message */}
+      <AnimatePresence>
+        {saveMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-primary text-primary-foreground rounded-lg p-3 text-center font-medium"
+          >
+            {saveMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="text-center">
         <h1 className="font-heading text-2xl font-bold">
@@ -205,7 +273,7 @@ export function TransactionForm() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {demoAccounts.map((account) => (
+                    {accounts.map((account) => (
                       <SelectItem key={account.id} value={account.id}>
                         {account.name}
                         {account.owner === "shared" && (
@@ -247,7 +315,7 @@ export function TransactionForm() {
                   <TransactionLineItem
                     key={line.id}
                     line={line}
-                    categories={demoCategories}
+                    categories={categories}
                     onChange={(updated) => handleUpdateLine(index, updated)}
                     onDelete={() => handleDeleteLine(index)}
                     canDelete={lines.length > 1}
