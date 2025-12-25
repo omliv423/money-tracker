@@ -519,9 +519,10 @@ export default function PLReportPage() {
         </div>
 
         {/* Pie Chart - 費用の割合 */}
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {showChart === "pie" && expenseByParent.length > 0 && (
             <motion.div
+              key={`pie-${format(currentMonth, "yyyy-MM")}`}
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
@@ -582,9 +583,10 @@ export default function PLReportPage() {
         </AnimatePresence>
 
         {/* Bar Chart - 月次推移 */}
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {showChart === "bar" && monthlyTrend.length > 0 && (
             <motion.div
+              key={`bar-${format(currentMonth, "yyyy-MM")}`}
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
