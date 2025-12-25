@@ -35,7 +35,7 @@ export function TransactionForm() {
   const [step, setStep] = useState<"amount" | "details">("amount");
   const [totalAmount, setTotalAmount] = useState(0);
   const [accrualDate, setAccrualDate] = useState(format(new Date(), "yyyy-MM-dd")); // 発生日
-  const [paymentDate, setPaymentDate] = useState(format(new Date(), "yyyy-MM-dd")); // 支払日
+  const [paymentDate, setPaymentDate] = useState<string | null>(format(new Date(), "yyyy-MM-dd")); // 支払日（null=未定）
   const [description, setDescription] = useState("");
   const [accountId, setAccountId] = useState("");
   const [counterpartyId, setCounterpartyId] = useState<string | null>(null);
@@ -147,7 +147,8 @@ export function TransactionForm() {
       // Insert transaction
       // 収入が多い場合は入金済みとして扱う
       // 支出の場合、発生日=支払日なら即決済済み
-      const isCashSettled = isIncomeTransaction || accrualDate === paymentDate;
+      // 支払日が未定（null）の場合は未決済
+      const isCashSettled = paymentDate !== null && (isIncomeTransaction || accrualDate === paymentDate);
 
       const { data: transaction, error: transactionError } = await supabase
         .from("transactions")
@@ -312,16 +313,42 @@ export function TransactionForm() {
                 <label className="text-sm text-muted-foreground flex items-center gap-2">
                   <CreditCard className="w-4 h-4" /> {isIncomeTransaction ? "入金日" : "支払日"}
                 </label>
-                <Input
-                  type="date"
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-40 text-right"
-                />
+                <div className="flex items-center gap-2">
+                  {paymentDate === null ? (
+                    <span className="text-sm text-muted-foreground">未定</span>
+                  ) : (
+                    <Input
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="w-40 text-right"
+                    />
+                  )}
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={paymentDate === null}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setPaymentDate(null);
+                        } else {
+                          setPaymentDate(format(new Date(), "yyyy-MM-dd"));
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-border"
+                    />
+                    未定
+                  </label>
+                </div>
               </div>
-              {accrualDate !== paymentDate && (
+              {paymentDate !== null && accrualDate !== paymentDate && (
                 <p className="text-xs text-muted-foreground text-center">
                   ※ 発生日と{isIncomeTransaction ? "入金日" : "支払日"}が異なる場合、{isIncomeTransaction ? "未収金" : "未払金"}として計上されます
+                </p>
+              )}
+              {paymentDate === null && (
+                <p className="text-xs text-muted-foreground text-center">
+                  ※ {isIncomeTransaction ? "入金日" : "支払日"}が未定の場合、{isIncomeTransaction ? "未収金" : "未払金"}として計上されます
                 </p>
               )}
             </div>
