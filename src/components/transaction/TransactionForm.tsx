@@ -80,11 +80,22 @@ export function TransactionForm() {
     fetchData();
   }, []);
 
-  const allocatedAmount = lines.reduce((sum, line) => sum + line.amount, 0);
-  const remainingAmount = totalAmount - allocatedAmount;
+  // Calculate allocated amounts by type
+  const incomeAmount = lines
+    .filter((line) => line.lineType === "income")
+    .reduce((sum, line) => sum + line.amount, 0);
+  const expenseAmount = lines
+    .filter((line) => line.lineType === "expense" || line.lineType === "asset" || line.lineType === "liability")
+    .reduce((sum, line) => sum + line.amount, 0);
+
+  // Net amount = income - expense (can be positive or negative)
+  const netAmount = incomeAmount - expenseAmount;
+
+  // For balance checking, compare total to absolute net
+  const remainingAmount = totalAmount - Math.abs(netAmount);
 
   // Determine if this is primarily an income transaction
-  const isIncomeTransaction = lines.length > 0 && lines[0].lineType === "income";
+  const isIncomeTransaction = incomeAmount > expenseAmount;
 
   const handleNext = () => {
     if (totalAmount > 0) {
@@ -214,7 +225,7 @@ export function TransactionForm() {
   const canSave =
     totalAmount > 0 &&
     description.trim() !== "" &&
-    allocatedAmount === totalAmount &&
+    remainingAmount === 0 &&
     lines.every((line) => line.amount > 0 && line.categoryId);
 
   if (isLoading) {

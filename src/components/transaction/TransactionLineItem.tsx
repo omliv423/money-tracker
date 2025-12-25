@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useState } from "react";
 import { Trash2, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 import type { Tables } from "@/lib/supabase";
 
@@ -50,27 +52,41 @@ export function TransactionLineItem({
   onDelete,
   canDelete,
 }: TransactionLineItemProps) {
+  // Local state for amount input to prevent formatting while typing
+  const [amountInput, setAmountInput] = useState(line.amount > 0 ? line.amount.toString() : "");
+  const [isAmountFocused, setIsAmountFocused] = useState(false);
+
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value.replace(/[^0-9]/g, ""), 10) || 0;
-    onChange({ ...line, amount: value });
+    const rawValue = e.target.value.replace(/[^0-9]/g, "");
+    setAmountInput(rawValue);
+    const numValue = parseInt(rawValue, 10) || 0;
+    onChange({ ...line, amount: numValue });
+  };
+
+  const handleAmountBlur = () => {
+    setIsAmountFocused(false);
+    // Update local state to match the actual value
+    setAmountInput(line.amount > 0 ? line.amount.toString() : "");
+  };
+
+  const handleAmountFocus = () => {
+    setIsAmountFocused(true);
+    // Show raw number without formatting when focused
+    setAmountInput(line.amount > 0 ? line.amount.toString() : "");
   };
 
   const isAssetOrLiability = line.lineType === "asset" || line.lineType === "liability";
 
   // Filter categories based on line type
-  // income -> show income categories
-  // expense/asset/liability -> show expense categories
   const categoryType = line.lineType === "income" ? "income" : "expense";
   const filteredCategories = categories.filter((cat) => cat.type === categoryType);
 
+  // Build hierarchical category structure
+  const parentCategories = filteredCategories.filter((cat) => cat.parent_id === null);
+  const getChildren = (parentId: string) => filteredCategories.filter((cat) => cat.parent_id === parentId);
+
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="bg-card rounded-xl p-4 space-y-3 border border-border"
-    >
+    <div className="bg-card rounded-xl p-4 space-y-3 border border-border">
       {/* Amount and Type Row */}
       <div className="flex gap-3">
         <div className="flex-1">
@@ -80,8 +96,11 @@ export function TransactionLineItem({
             <Input
               type="text"
               inputMode="numeric"
-              value={line.amount.toLocaleString("ja-JP")}
+              value={isAmountFocused ? amountInput : (line.amount > 0 ? line.amount.toLocaleString("ja-JP") : "")}
               onChange={handleAmountChange}
+              onFocus={handleAmountFocus}
+              onBlur={handleAmountBlur}
+              placeholder="0"
               className="pl-7 tabular-nums text-right"
             />
           </div>
@@ -130,11 +149,30 @@ export function TransactionLineItem({
               <SelectValue placeholder="選択してください" />
             </SelectTrigger>
             <SelectContent>
-              {filteredCategories.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>
-                  {cat.name}
-                </SelectItem>
-              ))}
+              {parentCategories.map((parent) => {
+                const children = getChildren(parent.id);
+                if (children.length === 0) {
+                  // No children, show as regular item
+                  return (
+                    <SelectItem key={parent.id} value={parent.id}>
+                      {parent.name}
+                    </SelectItem>
+                  );
+                }
+                // Has children, show as group
+                return (
+                  <SelectGroup key={parent.id}>
+                    <SelectLabel className="text-xs font-semibold text-muted-foreground px-2">
+                      {parent.name}
+                    </SelectLabel>
+                    {children.map((child) => (
+                      <SelectItem key={child.id} value={child.id} className="pl-6">
+                        {child.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -205,6 +243,6 @@ export function TransactionLineItem({
           )}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }
