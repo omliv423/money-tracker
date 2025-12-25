@@ -81,14 +81,16 @@ export function TransactionForm() {
   }, []);
 
   // Calculate income and expense totals
+  // asset/liabilityは残り金額の計算から除外（複式簿記の相手勘定として使用）
   const incomeAmount = lines
     .filter((line) => line.lineType === "income")
     .reduce((sum, line) => sum + line.amount, 0);
   const expenseAmount = lines
-    .filter((line) => line.lineType === "expense" || line.lineType === "asset" || line.lineType === "liability")
+    .filter((line) => line.lineType === "expense")
     .reduce((sum, line) => sum + line.amount, 0);
 
   // Net amount (income - expense), can be positive or negative
+  // asset/liabilityは計算に含めない
   const netAmount = incomeAmount - expenseAmount;
 
   // Remaining: totalAmount should equal the absolute net amount

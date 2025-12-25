@@ -53,6 +53,7 @@ export default function BSReportPage() {
       }
 
       // Fetch unpaid transactions (未払金) - where is_cash_settled = false
+      // 未払金はexpense/incomeタイプの行のみを対象とする（asset/liabilityは除外）
       const { data: unpaidTransactions } = await supabase
         .from("transactions")
         .select(`
@@ -62,6 +63,7 @@ export default function BSReportPage() {
           account:accounts(id, name),
           transaction_lines(
             amount,
+            line_type,
             category:categories(id, name)
           )
         `)
@@ -69,12 +71,20 @@ export default function BSReportPage() {
 
       // Aggregate by account
       const accountPayableMap = new Map<string, AccountPayable>();
+      const countedTransactionIds = new Set<string>();
 
       (unpaidTransactions || []).forEach((tx: any) => {
         if (!tx.account) return;
 
         const accountId = tx.account.id;
         const accountName = tx.account.name;
+
+        // expense/incomeタイプの行だけを集計（asset/liabilityは別途管理）
+        const relevantLines = (tx.transaction_lines || []).filter(
+          (line: any) => line.line_type === "expense" || line.line_type === "income"
+        );
+
+        if (relevantLines.length === 0) return;
 
         if (!accountPayableMap.has(accountId)) {
           accountPayableMap.set(accountId, {
@@ -87,11 +97,11 @@ export default function BSReportPage() {
         }
 
         const payable = accountPayableMap.get(accountId)!;
-        payable.totalAmount += tx.total_amount;
-        payable.transactionCount += 1;
 
-        // Aggregate by category
-        (tx.transaction_lines || []).forEach((line: any) => {
+        // Aggregate by category (expense/incomeのみ)
+        relevantLines.forEach((line: any) => {
+          payable.totalAmount += line.amount;
+
           if (!line.category) return;
           const existingCat = payable.categories.find(
             (c) => c.categoryId === line.category.id
@@ -106,6 +116,13 @@ export default function BSReportPage() {
             });
           }
         });
+
+        // Count transaction only once per account
+        const txKey = `${tx.id}-${accountId}`;
+        if (!countedTransactionIds.has(txKey)) {
+          payable.transactionCount += 1;
+          countedTransactionIds.add(txKey);
+        }
       });
 
       const payableList = Array.from(accountPayableMap.values())
@@ -176,8 +193,14 @@ export default function BSReportPage() {
 
   const totalPayables = payablesByAccount.reduce((sum, p) => sum + p.totalAmount, 0);
   const totalReceivables = receivables.reduce((sum, r) => sum + r.amount, 0);
-  const totalLiabilities = liabilities.reduce((sum, l) => sum + l.amount, 0);
-  const netPosition = totalReceivables - totalLiabilities - totalPayables;
+  const totalBorrowings = liabilities.reduce((sum, l) => sum + l.amount, 0);
+
+  // 資産合計 = 立替金（債権）
+  const totalAssets = totalReceivables;
+  // 負債合計 = 未払金 + 借入金
+  const totalLiabilities = totalPayables + totalBorrowings;
+  // 純資産 = 資産 - 負債
+  const netPosition = totalAssets - totalLiabilities;
 
   if (isLoading) {
     return (
@@ -208,15 +231,15 @@ export default function BSReportPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-2">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-card rounded-xl p-4 border border-border"
+            className="bg-card rounded-xl p-3 border border-border"
           >
-            <p className="text-xs text-muted-foreground mb-1">立替金（債権）</p>
-            <p className="font-heading text-xl font-bold tabular-nums text-income">
-              ¥{totalReceivables.toLocaleString("ja-JP")}
+            <p className="text-xs text-muted-foreground mb-1">資産</p>
+            <p className="font-heading text-sm font-bold tabular-nums text-income whitespace-nowrap overflow-hidden">
+              ¥{totalAssets.toLocaleString("ja-JP")}
             </p>
           </motion.div>
 
@@ -224,149 +247,195 @@ export default function BSReportPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className="bg-card rounded-xl p-4 border border-border"
+            className="bg-card rounded-xl p-3 border border-border"
           >
-            <p className="text-xs text-muted-foreground mb-1">未払金（カード等）</p>
-            <p className="font-heading text-xl font-bold tabular-nums text-expense">
-              ¥{totalPayables.toLocaleString("ja-JP")}
+            <p className="text-xs text-muted-foreground mb-1">負債</p>
+            <p className="font-heading text-sm font-bold tabular-nums text-expense whitespace-nowrap overflow-hidden">
+              ¥{totalLiabilities.toLocaleString("ja-JP")}
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-card rounded-xl p-3 border border-border"
+          >
+            <p className="text-xs text-muted-foreground mb-1">純資産</p>
+            <p className={`font-heading text-sm font-bold tabular-nums whitespace-nowrap overflow-hidden ${netPosition >= 0 ? "text-income" : "text-expense"}`}>
+              {netPosition >= 0 ? "" : ""}¥{netPosition.toLocaleString("ja-JP")}
             </p>
           </motion.div>
         </div>
 
-        {/* Payables by Account (未払金 by 支払い方法) */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-expense" />
-            未払金（支払い方法別）
-          </h2>
-          {payablesByAccount.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4 text-sm">未払いなし</p>
-          ) : (
-            <div className="space-y-2">
-              {payablesByAccount.map((payable, index) => {
-                const isExpanded = expandedAccounts.has(payable.accountId);
-                return (
+        {/* 資産の部 */}
+        <div className="space-y-4">
+          <h2 className="text-base font-bold border-b border-border pb-2">資産の部</h2>
+
+          {/* 立替金（債権） */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <Users className="w-4 h-4 text-income" />
+              立替金（債権）
+            </h3>
+            {receivables.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4 text-sm">立替なし</p>
+            ) : (
+              <div className="space-y-2">
+                {receivables.map((item, index) => (
                   <motion.div
-                    key={payable.accountId}
+                    key={item.counterparty}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.03 }}
-                    className="bg-card rounded-xl border border-border overflow-hidden"
+                    className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
                   >
-                    <button
-                      onClick={() => toggleAccountExpand(payable.accountId)}
-                      className="w-full p-4 flex justify-between items-center hover:bg-accent transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <CreditCard className="w-4 h-4 text-muted-foreground" />
-                        <div className="text-left">
-                          <p className="font-medium">{payable.accountName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {payable.transactionCount}件
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-heading font-bold tabular-nums text-expense">
-                          ¥{payable.totalAmount.toLocaleString("ja-JP")}
-                        </span>
-                        {isExpanded ? (
-                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                        )}
-                      </div>
-                    </button>
-
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="border-t border-border"
-                        >
-                          <div className="p-4 pt-3 space-y-2 bg-secondary/30">
-                            <p className="text-xs text-muted-foreground mb-2">カテゴリ別内訳</p>
-                            {payable.categories.map((cat) => (
-                              <div
-                                key={cat.categoryId}
-                                className="flex justify-between items-center text-sm"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <Tag className="w-3 h-3 text-muted-foreground" />
-                                  <span>{cat.categoryName}</span>
-                                </div>
-                                <span className="tabular-nums">
-                                  ¥{cat.amount.toLocaleString("ja-JP")}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                    <span>{item.counterparty}</span>
+                    <span className="font-heading font-bold tabular-nums text-income">
+                      ¥{item.amount.toLocaleString("ja-JP")}
+                    </span>
                   </motion.div>
-                );
-              })}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 資産合計 */}
+          <div className="bg-secondary/50 rounded-xl p-4 flex justify-between items-center">
+            <span className="font-medium">資産合計</span>
+            <span className="font-heading font-bold tabular-nums text-income">
+              ¥{totalAssets.toLocaleString("ja-JP")}
+            </span>
+          </div>
         </div>
 
-        {/* Receivables (立替金) */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-            <Users className="w-4 h-4 text-income" />
-            立替金（受け取り予定）
-          </h2>
-          {receivables.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4 text-sm">立替なし</p>
-          ) : (
-            <div className="space-y-2">
-              {receivables.map((item, index) => (
-                <motion.div
-                  key={item.counterparty}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
-                >
-                  <span>{item.counterparty}</span>
-                  <span className="font-heading font-bold tabular-nums text-income">
-                    ¥{item.amount.toLocaleString("ja-JP")}
-                  </span>
-                </motion.div>
-              ))}
-            </div>
-          )}
+        {/* 負債の部 */}
+        <div className="space-y-4">
+          <h2 className="text-base font-bold border-b border-border pb-2">負債の部</h2>
+
+          {/* 未払金（支払い方法別） */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-expense" />
+              未払金
+            </h3>
+            {payablesByAccount.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4 text-sm">未払いなし</p>
+            ) : (
+              <div className="space-y-2">
+                {payablesByAccount.map((payable, index) => {
+                  const isExpanded = expandedAccounts.has(payable.accountId);
+                  return (
+                    <motion.div
+                      key={payable.accountId}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      className="bg-card rounded-xl border border-border overflow-hidden"
+                    >
+                      <button
+                        onClick={() => toggleAccountExpand(payable.accountId)}
+                        className="w-full p-4 flex justify-between items-center hover:bg-accent transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <CreditCard className="w-4 h-4 text-muted-foreground" />
+                          <div className="text-left">
+                            <p className="font-medium">{payable.accountName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {payable.transactionCount}件
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-heading font-bold tabular-nums text-expense">
+                            ¥{payable.totalAmount.toLocaleString("ja-JP")}
+                          </span>
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </div>
+                      </button>
+
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="border-t border-border"
+                          >
+                            <div className="p-4 pt-3 space-y-2 bg-secondary/30">
+                              <p className="text-xs text-muted-foreground mb-2">カテゴリ別内訳</p>
+                              {payable.categories.map((cat) => (
+                                <div
+                                  key={cat.categoryId}
+                                  className="flex justify-between items-center text-sm"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Tag className="w-3 h-3 text-muted-foreground" />
+                                    <span>{cat.categoryName}</span>
+                                  </div>
+                                  <span className="tabular-nums">
+                                    ¥{cat.amount.toLocaleString("ja-JP")}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 借入金 */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <Users className="w-4 h-4 text-expense" />
+              借入金
+            </h3>
+            {liabilities.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4 text-sm">借入なし</p>
+            ) : (
+              <div className="space-y-2">
+                {liabilities.map((item, index) => (
+                  <motion.div
+                    key={item.counterparty}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
+                  >
+                    <span>{item.counterparty}</span>
+                    <span className="font-heading font-bold tabular-nums text-expense">
+                      ¥{item.amount.toLocaleString("ja-JP")}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 負債合計 */}
+          <div className="bg-secondary/50 rounded-xl p-4 flex justify-between items-center">
+            <span className="font-medium">負債合計</span>
+            <span className="font-heading font-bold tabular-nums text-expense">
+              ¥{totalLiabilities.toLocaleString("ja-JP")}
+            </span>
+          </div>
         </div>
 
-        {/* Liabilities (借入金) */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-            <Users className="w-4 h-4 text-expense" />
-            借入金（支払い予定）
-          </h2>
-          {liabilities.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4 text-sm">借入なし</p>
-          ) : (
-            <div className="space-y-2">
-              {liabilities.map((item, index) => (
-                <motion.div
-                  key={item.counterparty}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
-                >
-                  <span>{item.counterparty}</span>
-                  <span className="font-heading font-bold tabular-nums text-expense">
-                    ¥{item.amount.toLocaleString("ja-JP")}
-                  </span>
-                </motion.div>
-              ))}
-            </div>
-          )}
+        {/* 純資産 */}
+        <div className="bg-primary/10 rounded-xl p-4 flex justify-between items-center border border-primary/30">
+          <span className="font-bold">純資産（資産 − 負債）</span>
+          <span className={`font-heading text-lg font-bold tabular-nums ${netPosition >= 0 ? "text-income" : "text-expense"}`}>
+            ¥{netPosition.toLocaleString("ja-JP")}
+          </span>
         </div>
 
         {/* Accounts List */}
