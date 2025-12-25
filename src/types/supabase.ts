@@ -75,6 +75,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          parent_id: string | null
           type: string
         }
         Insert: {
@@ -82,6 +83,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          parent_id?: string | null
           type: string
         }
         Update: {
@@ -89,7 +91,37 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          parent_id?: string | null
           type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      counterparties: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
         }
         Relationships: []
       }
@@ -174,6 +206,7 @@ export type Database = {
       transactions: {
         Row: {
           account_id: string
+          counterparty_id: string | null
           created_at: string
           date: string
           description: string
@@ -184,6 +217,7 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          counterparty_id?: string | null
           created_at?: string
           date?: string
           description: string
@@ -194,6 +228,7 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          counterparty_id?: string | null
           created_at?: string
           date?: string
           description?: string
@@ -208,6 +243,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_counterparty_id_fkey"
+            columns: ["counterparty_id"]
+            isOneToOne: false
+            referencedRelation: "counterparties"
             referencedColumns: ["id"]
           },
         ]

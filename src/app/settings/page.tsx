@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Wallet, Tag, Database, Info, ArrowRight, CreditCard } from "lucide-react";
+import { Wallet, Tag, Database, Info, ArrowRight, CreditCard, Store } from "lucide-react";
 
 const settingsItems = [
   {
@@ -17,9 +17,15 @@ const settingsItems = [
   },
   {
     title: "カテゴリ管理",
-    description: "支出カテゴリを追加・編集",
+    description: "支出カテゴリを追加・編集（親子対応）",
     icon: Tag,
     href: "/settings/categories",
+  },
+  {
+    title: "相手先管理",
+    description: "取引先・店舗を追加・編集",
+    icon: Store,
+    href: "/settings/counterparties",
   },
   {
     title: "データ管理",

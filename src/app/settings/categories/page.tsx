@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Plus, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Tag, Trash2, ChevronRight, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,6 +34,10 @@ import { supabase, type Tables } from "@/lib/supabase";
 
 type Category = Tables<"categories">;
 
+interface CategoryWithChildren extends Category {
+  children: Category[];
+}
+
 const categoryTypes = [
   { value: "expense", label: "支出" },
   { value: "income", label: "収入" },
@@ -49,6 +53,7 @@ export default function CategoriesSettingsPage() {
   // Form state
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("expense");
+  const [newParentId, setNewParentId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const fetchCategories = async () => {
@@ -76,10 +81,12 @@ export default function CategoriesSettingsPage() {
     await supabase.from("categories").insert({
       name: newName.trim(),
       type: newType,
+      parent_id: newParentId,
     });
 
     setNewName("");
     setNewType("expense");
+    setNewParentId(null);
     setShowAddDialog(false);
     setIsSaving(false);
     fetchCategories();
@@ -101,8 +108,22 @@ export default function CategoriesSettingsPage() {
     fetchCategories();
   };
 
-  const incomeCategories = categories.filter((c) => c.type === "income");
-  const expenseCategories = categories.filter((c) => c.type === "expense");
+  // Build hierarchical structure
+  const buildHierarchy = (cats: Category[]): CategoryWithChildren[] => {
+    const parentCategories = cats.filter((c) => c.parent_id === null);
+    return parentCategories.map((parent) => ({
+      ...parent,
+      children: cats.filter((c) => c.parent_id === parent.id),
+    }));
+  };
+
+  const incomeCategories = buildHierarchy(categories.filter((c) => c.type === "income"));
+  const expenseCategories = buildHierarchy(categories.filter((c) => c.type === "expense"));
+
+  // Get parent categories for dropdown
+  const parentCategoriesForType = categories.filter(
+    (c) => c.type === newType && c.parent_id === null
+  );
 
   if (isLoading) {
     return (
@@ -118,7 +139,47 @@ export default function CategoriesSettingsPage() {
     );
   }
 
-  const renderCategoryList = (cats: Category[], label: string, colorClass: string) => (
+  const renderCategoryItem = (category: Category, isChild: boolean = false) => (
+    <motion.div
+      key={category.id}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`bg-card rounded-xl p-4 border border-border ${
+        !category.is_active ? "opacity-50" : ""
+      } ${isChild ? "ml-6 border-l-2 border-l-primary/30" : ""}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {isChild ? (
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          ) : (
+            <FolderOpen className="w-4 h-4 text-muted-foreground" />
+          )}
+          <span className="font-medium">{category.name}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleToggleActive(category)}
+            className={`px-3 py-1 text-xs rounded-full transition-colors ${
+              category.is_active
+                ? "bg-primary/20 text-primary"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {category.is_active ? "有効" : "無効"}
+          </button>
+          <button
+            onClick={() => setDeleteId(category.id)}
+            className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  const renderCategoryList = (cats: CategoryWithChildren[], label: string, colorClass: string) => (
     <div>
       <h2 className={`text-sm font-medium mb-3 ${colorClass}`}>{label}</h2>
       {cats.length === 0 ? (
@@ -126,41 +187,15 @@ export default function CategoriesSettingsPage() {
       ) : (
         <div className="space-y-2">
           <AnimatePresence>
-            {cats.map((category, index) => (
-              <motion.div
-                key={category.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.03 }}
-                className={`bg-card rounded-xl p-4 border border-border ${
-                  !category.is_active ? "opacity-50" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Tag className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium">{category.name}</span>
+            {cats.map((category) => (
+              <div key={category.id}>
+                {renderCategoryItem(category, false)}
+                {category.children.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {category.children.map((child) => renderCategoryItem(child, true))}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleToggleActive(category)}
-                      className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                        category.is_active
-                          ? "bg-primary/20 text-primary"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {category.is_active ? "有効" : "無効"}
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(category.id)}
-                      className="p-2 text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
+                )}
+              </div>
             ))}
           </AnimatePresence>
         </div>
@@ -212,7 +247,13 @@ export default function CategoriesSettingsPage() {
             </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">種類</label>
-              <Select value={newType} onValueChange={setNewType}>
+              <Select
+                value={newType}
+                onValueChange={(v) => {
+                  setNewType(v);
+                  setNewParentId(null); // Reset parent when type changes
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -220,6 +261,27 @@ export default function CategoriesSettingsPage() {
                   {categoryTypes.map((type) => (
                     <SelectItem key={type.value} value={type.value}>
                       {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">
+                親カテゴリ（任意）
+              </label>
+              <Select
+                value={newParentId || "none"}
+                onValueChange={(v) => setNewParentId(v === "none" ? null : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="親カテゴリなし（大分類として追加）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">親カテゴリなし（大分類として追加）</SelectItem>
+                  {parentCategoriesForType.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}の子カテゴリとして追加
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -242,7 +304,7 @@ export default function CategoriesSettingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>カテゴリを削除しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              このカテゴリを使用している取引がある場合、削除できません。
+              このカテゴリを使用している取引がある場合、または子カテゴリがある場合は削除できません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -2,10 +2,24 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, ChevronLeft, ChevronRight, TrendingUp, TrendingDown } from "lucide-react";
-import { format, startOfMonth, endOfMonth, addMonths, subMonths, isWithinInterval, differenceInMonths } from "date-fns";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  TrendingUp,
+  TrendingDown,
+} from "lucide-react";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  addMonths,
+  subMonths,
+  isWithinInterval,
+} from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase } from "@/lib/supabase";
 
@@ -16,24 +30,37 @@ interface TransactionLine {
   amortization_months: number | null;
   amortization_start: string | null;
   amortization_end: string | null;
-  category: { id: string; name: string } | null;
-  transaction: { date: string } | null;
+  category: { id: string; name: string; parent_id: string | null } | null;
+  transaction: {
+    date: string;
+    counterparty: { id: string; name: string } | null;
+  } | null;
 }
 
 interface CategorySummary {
   categoryId: string;
   categoryName: string;
+  parentId: string | null;
   amount: number;
+  byCounterparty: Map<string, { name: string; amount: number }>;
+}
+
+interface ParentCategorySummary {
+  categoryId: string;
+  categoryName: string;
+  amount: number;
+  children: CategorySummary[];
 }
 
 export default function PLReportPage() {
   const router = useRouter();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
-  const [incomeByCategory, setIncomeByCategory] = useState<CategorySummary[]>([]);
-  const [expenseByCategory, setExpenseByCategory] = useState<CategorySummary[]>([]);
+  const [incomeByParent, setIncomeByParent] = useState<ParentCategorySummary[]>([]);
+  const [expenseByParent, setExpenseByParent] = useState<ParentCategorySummary[]>([]);
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function fetchData() {
@@ -42,27 +69,31 @@ export default function PLReportPage() {
       const monthStart = startOfMonth(currentMonth);
       const monthEnd = endOfMonth(currentMonth);
 
-      // Fetch all transaction lines with their transactions
-      // We need to check both regular transactions in this month
-      // AND amortized transactions that span this month
-      const { data: lines, error } = await supabase
-        .from("transaction_lines")
-        .select(`
+      // Fetch all transaction lines with categories (including parent_id) and counterparties
+      const { data: lines, error } = await supabase.from("transaction_lines").select(`
           id,
           amount,
           line_type,
           amortization_months,
           amortization_start,
           amortization_end,
-          category:categories(id, name),
-          transaction:transactions(date)
+          category:categories(id, name, parent_id),
+          transaction:transactions(date, counterparty:counterparties(id, name))
         `);
+
+      // Fetch all categories for parent lookup
+      const { data: allCategories } = await supabase.from("categories").select("*");
 
       if (error) {
         console.error("Error fetching data:", error);
         setIsLoading(false);
         return;
       }
+
+      const categoryMap = new Map<string, { name: string; parent_id: string | null }>();
+      (allCategories || []).forEach((cat: any) => {
+        categoryMap.set(cat.id, { name: cat.name, parent_id: cat.parent_id });
+      });
 
       const incomeMap = new Map<string, CategorySummary>();
       const expenseMap = new Map<string, CategorySummary>();
@@ -74,6 +105,9 @@ export default function PLReportPage() {
         const txDate = new Date(typedLine.transaction.date);
         const categoryId = typedLine.category.id;
         const categoryName = typedLine.category.name;
+        const parentId = typedLine.category.parent_id;
+        const counterpartyId = typedLine.transaction.counterparty?.id || "unknown";
+        const counterpartyName = typedLine.transaction.counterparty?.name || "不明";
 
         let amountForMonth = 0;
 
@@ -87,17 +121,14 @@ export default function PLReportPage() {
           const amortStart = new Date(typedLine.amortization_start);
           const amortEnd = new Date(typedLine.amortization_end);
 
-          // Check if the current month falls within the amortization period
           if (
             isWithinInterval(monthStart, { start: amortStart, end: amortEnd }) ||
             isWithinInterval(monthEnd, { start: amortStart, end: amortEnd }) ||
             (monthStart <= amortStart && monthEnd >= amortEnd)
           ) {
-            // Calculate the monthly amount
             amountForMonth = Math.round(typedLine.amount / typedLine.amortization_months);
           }
         } else {
-          // Regular transaction - check if it's in the current month
           if (txDate >= monthStart && txDate <= monthEnd) {
             amountForMonth = typedLine.amount;
           }
@@ -105,33 +136,84 @@ export default function PLReportPage() {
 
         if (amountForMonth === 0) return;
 
-        // Add to appropriate category
-        if (typedLine.line_type === "income") {
-          const existing = incomeMap.get(categoryId) || {
-            categoryId,
-            categoryName,
-            amount: 0,
-          };
-          existing.amount += amountForMonth;
-          incomeMap.set(categoryId, existing);
-        } else if (typedLine.line_type === "expense") {
-          const existing = expenseMap.get(categoryId) || {
-            categoryId,
-            categoryName,
-            amount: 0,
-          };
-          existing.amount += amountForMonth;
-          expenseMap.set(categoryId, existing);
-        }
+        const targetMap = typedLine.line_type === "income" ? incomeMap : expenseMap;
+
+        const existing = targetMap.get(categoryId) || {
+          categoryId,
+          categoryName,
+          parentId,
+          amount: 0,
+          byCounterparty: new Map(),
+        };
+        existing.amount += amountForMonth;
+
+        // Track by counterparty
+        const cpEntry = existing.byCounterparty.get(counterpartyId) || {
+          name: counterpartyName,
+          amount: 0,
+        };
+        cpEntry.amount += amountForMonth;
+        existing.byCounterparty.set(counterpartyId, cpEntry);
+
+        targetMap.set(categoryId, existing);
       });
 
-      const incomeList = Array.from(incomeMap.values()).sort((a, b) => b.amount - a.amount);
-      const expenseList = Array.from(expenseMap.values()).sort((a, b) => b.amount - a.amount);
+      // Build hierarchical structure
+      const buildHierarchy = (
+        map: Map<string, CategorySummary>
+      ): ParentCategorySummary[] => {
+        const parentMap = new Map<string, ParentCategorySummary>();
 
-      setIncomeByCategory(incomeList);
-      setExpenseByCategory(expenseList);
-      setTotalIncome(incomeList.reduce((sum, c) => sum + c.amount, 0));
-      setTotalExpense(expenseList.reduce((sum, c) => sum + c.amount, 0));
+        // First pass: group by parent
+        map.forEach((summary) => {
+          const actualParentId = summary.parentId;
+
+          if (actualParentId) {
+            // This is a child category
+            const parent = categoryMap.get(actualParentId);
+            if (parent) {
+              const parentSummary = parentMap.get(actualParentId) || {
+                categoryId: actualParentId,
+                categoryName: parent.name,
+                amount: 0,
+                children: [],
+              };
+              parentSummary.amount += summary.amount;
+              parentSummary.children.push(summary);
+              parentMap.set(actualParentId, parentSummary);
+            }
+          } else {
+            // This is a parent category or standalone
+            const existing = parentMap.get(summary.categoryId);
+            if (existing) {
+              // Already has children, add this amount
+              existing.amount += summary.amount;
+            } else {
+              parentMap.set(summary.categoryId, {
+                categoryId: summary.categoryId,
+                categoryName: summary.categoryName,
+                amount: summary.amount,
+                children: [],
+              });
+            }
+          }
+        });
+
+        // Sort children by amount
+        parentMap.forEach((parent) => {
+          parent.children.sort((a, b) => b.amount - a.amount);
+        });
+
+        return Array.from(parentMap.values()).sort((a, b) => b.amount - a.amount);
+      };
+
+      const incomeHierarchy = buildHierarchy(incomeMap);
+      const expenseHierarchy = buildHierarchy(expenseMap);
+
+      setIncomeByParent(incomeHierarchy);
+      setExpenseByParent(expenseHierarchy);
+      setTotalIncome(incomeHierarchy.reduce((sum, c) => sum + c.amount, 0));
+      setTotalExpense(expenseHierarchy.reduce((sum, c) => sum + c.amount, 0));
       setIsLoading(false);
     }
 
@@ -142,6 +224,18 @@ export default function PLReportPage() {
 
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+
+  const toggleExpand = (categoryId: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+      return next;
+    });
+  };
 
   if (isLoading) {
     return (
@@ -156,6 +250,75 @@ export default function PLReportPage() {
       </MainLayout>
     );
   }
+
+  const renderCategoryItem = (
+    parent: ParentCategorySummary,
+    colorClass: string,
+    index: number
+  ) => {
+    const isExpanded = expandedCategories.has(parent.categoryId);
+    const hasChildren = parent.children.length > 0;
+
+    return (
+      <div key={parent.categoryId}>
+        <motion.div
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: index * 0.03 }}
+          onClick={() => hasChildren && toggleExpand(parent.categoryId)}
+          className={`bg-card rounded-xl p-4 border border-border flex justify-between items-center ${
+            hasChildren ? "cursor-pointer hover:bg-accent transition-colors" : ""
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {hasChildren && (
+              <motion.div
+                animate={{ rotate: isExpanded ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              </motion.div>
+            )}
+            <span>{parent.categoryName}</span>
+            {hasChildren && (
+              <span className="text-xs text-muted-foreground">
+                ({parent.children.length})
+              </span>
+            )}
+          </div>
+          <span className={`font-heading font-bold tabular-nums ${colorClass}`}>
+            ¥{parent.amount.toLocaleString("ja-JP")}
+          </span>
+        </motion.div>
+
+        {/* Children */}
+        <AnimatePresence>
+          {isExpanded && hasChildren && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="ml-4 mt-2 space-y-2 border-l-2 border-primary/20 pl-4"
+            >
+              {parent.children.map((child) => (
+                <motion.div
+                  key={child.categoryId}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="bg-secondary/50 rounded-lg p-3 flex justify-between items-center"
+                >
+                  <span className="text-sm">{child.categoryName}</span>
+                  <span className={`font-heading font-bold tabular-nums text-sm ${colorClass}`}>
+                    ¥{child.amount.toLocaleString("ja-JP")}
+                  </span>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
 
   return (
     <MainLayout>
@@ -228,7 +391,11 @@ export default function PLReportPage() {
             className="bg-card rounded-xl p-4 border border-border"
           >
             <p className="text-xs text-muted-foreground mb-1">収支</p>
-            <p className={`font-heading text-lg font-bold tabular-nums ${netIncome >= 0 ? "text-income" : "text-expense"}`}>
+            <p
+              className={`font-heading text-lg font-bold tabular-nums ${
+                netIncome >= 0 ? "text-income" : "text-expense"
+              }`}
+            >
               {netIncome >= 0 ? "+" : ""}¥{netIncome.toLocaleString("ja-JP")}
             </p>
           </motion.div>
@@ -239,25 +406,15 @@ export default function PLReportPage() {
           <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-income" />
             収入の内訳
+            <span className="text-xs">（タップで展開）</span>
           </h2>
-          {incomeByCategory.length === 0 ? (
+          {incomeByParent.length === 0 ? (
             <p className="text-center text-muted-foreground py-4 text-sm">収入なし</p>
           ) : (
             <div className="space-y-2">
-              {incomeByCategory.map((cat, index) => (
-                <motion.div
-                  key={cat.categoryId}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
-                >
-                  <span>{cat.categoryName}</span>
-                  <span className="font-heading font-bold tabular-nums text-income">
-                    ¥{cat.amount.toLocaleString("ja-JP")}
-                  </span>
-                </motion.div>
-              ))}
+              {incomeByParent.map((parent, index) =>
+                renderCategoryItem(parent, "text-income", index)
+              )}
             </div>
           )}
         </div>
@@ -267,25 +424,15 @@ export default function PLReportPage() {
           <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
             <TrendingDown className="w-4 h-4 text-expense" />
             支出の内訳
+            <span className="text-xs">（タップで展開）</span>
           </h2>
-          {expenseByCategory.length === 0 ? (
+          {expenseByParent.length === 0 ? (
             <p className="text-center text-muted-foreground py-4 text-sm">支出なし</p>
           ) : (
             <div className="space-y-2">
-              {expenseByCategory.map((cat, index) => (
-                <motion.div
-                  key={cat.categoryId}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
-                >
-                  <span>{cat.categoryName}</span>
-                  <span className="font-heading font-bold tabular-nums text-expense">
-                    ¥{cat.amount.toLocaleString("ja-JP")}
-                  </span>
-                </motion.div>
-              ))}
+              {expenseByParent.map((parent, index) =>
+                renderCategoryItem(parent, "text-expense", index)
+              )}
             </div>
           )}
         </div>

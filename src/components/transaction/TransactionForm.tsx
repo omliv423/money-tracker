@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Check, Calendar, Wallet, FileText, CreditCard } from "lucide-react";
+import { Plus, Check, Calendar, Wallet, FileText, CreditCard, Store } from "lucide-react";
 import { format, differenceInMonths } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { supabase, type Tables } from "@/lib/supabase";
 
 type Account = Tables<"accounts">;
 type Category = Tables<"categories">;
+type Counterparty = Tables<"counterparties">;
 
 function generateId() {
   return Math.random().toString(36).substring(2, 9);
@@ -28,6 +29,7 @@ function generateId() {
 export function TransactionForm() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [step, setStep] = useState<"amount" | "details">("amount");
@@ -36,6 +38,7 @@ export function TransactionForm() {
   const [paymentDate, setPaymentDate] = useState(format(new Date(), "yyyy-MM-dd")); // 支払日
   const [description, setDescription] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [counterpartyId, setCounterpartyId] = useState<string | null>(null);
   const [lines, setLines] = useState<LineItemData[]>([
     {
       id: generateId(),
@@ -50,13 +53,14 @@ export function TransactionForm() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
-  // Fetch accounts and categories on mount
+  // Fetch accounts, categories, and counterparties on mount
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      const [accountsRes, categoriesRes] = await Promise.all([
+      const [accountsRes, categoriesRes, counterpartiesRes] = await Promise.all([
         supabase.from("accounts").select("*").eq("is_active", true).order("name"),
         supabase.from("categories").select("*").eq("is_active", true).order("name"),
+        supabase.from("counterparties").select("*").eq("is_active", true).order("name"),
       ]);
 
       if (accountsRes.data) {
@@ -67,6 +71,9 @@ export function TransactionForm() {
       }
       if (categoriesRes.data) {
         setCategories(categoriesRes.data);
+      }
+      if (counterpartiesRes.data) {
+        setCounterparties(counterpartiesRes.data);
       }
       setIsLoading(false);
     }
@@ -132,6 +139,7 @@ export function TransactionForm() {
           payment_date: paymentDate, // 支払日
           description,
           account_id: accountId,
+          counterparty_id: counterpartyId,
           total_amount: totalAmount,
           is_cash_settled: isCashSettled,
         })
@@ -177,6 +185,7 @@ export function TransactionForm() {
       setDescription("");
       setAccrualDate(format(new Date(), "yyyy-MM-dd"));
       setPaymentDate(format(new Date(), "yyyy-MM-dd"));
+      setCounterpartyId(null);
       setLines([
         {
           id: generateId(),
@@ -342,6 +351,31 @@ export function TransactionForm() {
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
+
+            {/* Counterparty */}
+            {counterparties.length > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Store className="w-3 h-3" /> 相手先（任意）
+                </label>
+                <Select
+                  value={counterpartyId || "none"}
+                  onValueChange={(v) => setCounterpartyId(v === "none" ? null : v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="相手先を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">指定なし</SelectItem>
+                    {counterparties.map((cp) => (
+                      <SelectItem key={cp.id} value={cp.id}>
+                        {cp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Lines */}
             <div className="space-y-3">

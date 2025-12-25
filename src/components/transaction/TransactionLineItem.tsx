@@ -57,6 +57,12 @@ export function TransactionLineItem({
 
   const isAssetOrLiability = line.lineType === "asset" || line.lineType === "liability";
 
+  // Filter categories based on line type
+  // income -> show income categories
+  // expense/asset/liability -> show expense categories
+  const categoryType = line.lineType === "income" ? "income" : "expense";
+  const filteredCategories = categories.filter((cat) => cat.type === categoryType);
+
   return (
     <motion.div
       layout
@@ -85,9 +91,15 @@ export function TransactionLineItem({
           <Select
             value={line.lineType}
             onValueChange={(value: LineType) => {
+              // Reset categoryId when switching between income/expense types
+              const newCategoryType = value === "income" ? "income" : "expense";
+              const currentCategory = categories.find((c) => c.id === line.categoryId);
+              const shouldResetCategory = currentCategory && currentCategory.type !== newCategoryType;
+
               onChange({
                 ...line,
                 lineType: value,
+                categoryId: shouldResetCategory ? "" : line.categoryId,
                 counterparty: value === "expense" || value === "income" ? null : line.counterparty,
               });
             }}
@@ -118,7 +130,7 @@ export function TransactionLineItem({
               <SelectValue placeholder="選択してください" />
             </SelectTrigger>
             <SelectContent>
-              {categories.map((cat) => (
+              {filteredCategories.map((cat) => (
                 <SelectItem key={cat.id} value={cat.id}>
                   {cat.name}
                 </SelectItem>

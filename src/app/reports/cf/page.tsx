@@ -2,12 +2,26 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, ChevronLeft, ChevronRight, ArrowUpRight, ArrowDownLeft, Wallet } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Wallet,
+} from "lucide-react";
 import { format, startOfMonth, endOfMonth, addMonths, subMonths } from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase } from "@/lib/supabase";
+
+interface TransactionLine {
+  amount: number;
+  line_type: string;
+  category: { id: string; name: string; parent_id: string | null } | null;
+}
 
 interface Transaction {
   id: string;
@@ -16,6 +30,14 @@ interface Transaction {
   description: string;
   total_amount: number;
   account: { id: string; name: string } | null;
+  counterparty: { id: string; name: string } | null;
+  transaction_lines: TransactionLine[];
+}
+
+interface CategoryBreakdown {
+  categoryId: string;
+  categoryName: string;
+  amount: number;
 }
 
 interface AccountCashFlow {
@@ -23,6 +45,8 @@ interface AccountCashFlow {
   accountName: string;
   inflow: number;
   outflow: number;
+  byCategory: CategoryBreakdown[];
+  transactions: { description: string; amount: number; counterparty: string | null }[];
 }
 
 export default function CFReportPage() {
@@ -32,6 +56,7 @@ export default function CFReportPage() {
   const [cashFlowByAccount, setCashFlowByAccount] = useState<AccountCashFlow[]>([]);
   const [totalInflow, setTotalInflow] = useState(0);
   const [totalOutflow, setTotalOutflow] = useState(0);
+  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function fetchData() {
@@ -40,7 +65,7 @@ export default function CFReportPage() {
       const monthStart = format(startOfMonth(currentMonth), "yyyy-MM-dd");
       const monthEnd = format(endOfMonth(currentMonth), "yyyy-MM-dd");
 
-      // Fetch transactions by payment_date
+      // Fetch transactions with lines for category breakdown
       const { data: transactions, error } = await supabase
         .from("transactions")
         .select(`
@@ -49,7 +74,9 @@ export default function CFReportPage() {
           payment_date,
           description,
           total_amount,
-          account:accounts(id, name)
+          account:accounts(id, name),
+          counterparty:counterparties(id, name),
+          transaction_lines(amount, line_type, category:categories(id, name, parent_id))
         `)
         .gte("payment_date", monthStart)
         .lte("payment_date", monthEnd)
@@ -60,13 +87,6 @@ export default function CFReportPage() {
         setIsLoading(false);
         return;
       }
-
-      // Also fetch settlements for this month
-      const { data: settlements } = await supabase
-        .from("settlements")
-        .select("*")
-        .gte("date", monthStart)
-        .lte("date", monthEnd);
 
       // Aggregate by account
       const accountMap = new Map<string, AccountCashFlow>();
@@ -82,38 +102,48 @@ export default function CFReportPage() {
             accountName,
             inflow: 0,
             outflow: 0,
+            byCategory: [],
+            transactions: [],
           });
         }
 
         const account = accountMap.get(accountId)!;
-        // For now, treating all transactions as outflows (expenses)
-        // TODO: Check transaction_lines for income type
-        account.outflow += typedTx.total_amount;
+
+        // Process transaction lines
+        (typedTx.transaction_lines || []).forEach((line) => {
+          const categoryId = line.category?.id || "unknown";
+          const categoryName = line.category?.name || "未分類";
+
+          if (line.line_type === "income") {
+            account.inflow += line.amount;
+          } else {
+            account.outflow += line.amount;
+          }
+
+          // Find or create category entry
+          let catEntry = account.byCategory.find((c) => c.categoryId === categoryId);
+          if (!catEntry) {
+            catEntry = { categoryId, categoryName, amount: 0 };
+            account.byCategory.push(catEntry);
+          }
+          catEntry.amount += line.amount;
+        });
+
+        // Add transaction for detail view
+        account.transactions.push({
+          description: typedTx.description,
+          amount: typedTx.total_amount,
+          counterparty: typedTx.counterparty?.name || null,
+        });
       });
 
-      // Add settlements to cash flow
-      (settlements || []).forEach((settlement) => {
-        // Settlements are cash movements
-        // Positive = received money (inflow)
-        // Negative = paid money (outflow)
-        const settlementAccount = accountMap.get("settlement") || {
-          accountId: "settlement",
-          accountName: "精算",
-          inflow: 0,
-          outflow: 0,
-        };
-
-        if (settlement.amount > 0) {
-          settlementAccount.inflow += settlement.amount;
-        } else {
-          settlementAccount.outflow += Math.abs(settlement.amount);
-        }
-
-        accountMap.set("settlement", settlementAccount);
+      // Sort categories by amount
+      accountMap.forEach((account) => {
+        account.byCategory.sort((a, b) => b.amount - a.amount);
       });
 
       const accountList = Array.from(accountMap.values()).sort(
-        (a, b) => (b.outflow + b.inflow) - (a.outflow + a.inflow)
+        (a, b) => b.outflow + b.inflow - (a.outflow + a.inflow)
       );
 
       setCashFlowByAccount(accountList);
@@ -129,6 +159,18 @@ export default function CFReportPage() {
 
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+
+  const toggleExpand = (accountId: string) => {
+    setExpandedAccounts((prev) => {
+      const next = new Set(prev);
+      if (next.has(accountId)) {
+        next.delete(accountId);
+      } else {
+        next.add(accountId);
+      }
+      return next;
+    });
+  };
 
   if (isLoading) {
     return (
@@ -220,7 +262,11 @@ export default function CFReportPage() {
             className="bg-card rounded-xl p-4 border border-border"
           >
             <p className="text-xs text-muted-foreground mb-1">純増減</p>
-            <p className={`font-heading text-lg font-bold tabular-nums ${netCashFlow >= 0 ? "text-income" : "text-expense"}`}>
+            <p
+              className={`font-heading text-lg font-bold tabular-nums ${
+                netCashFlow >= 0 ? "text-income" : "text-expense"
+              }`}
+            >
               {netCashFlow >= 0 ? "+" : ""}¥{netCashFlow.toLocaleString("ja-JP")}
             </p>
           </motion.div>
@@ -231,42 +277,98 @@ export default function CFReportPage() {
           <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
             <Wallet className="w-4 h-4" />
             支払い方法別
+            <span className="text-xs">（タップで展開）</span>
           </h2>
           {cashFlowByAccount.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4 text-sm">この月の取引なし</p>
+            <p className="text-center text-muted-foreground py-4 text-sm">
+              この月の取引なし
+            </p>
           ) : (
             <div className="space-y-2">
-              {cashFlowByAccount.map((account, index) => (
-                <motion.div
-                  key={account.accountId}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className="bg-card rounded-xl p-4 border border-border"
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-medium">{account.accountName}</span>
-                    <span className={`font-heading font-bold tabular-nums ${
-                      account.inflow - account.outflow >= 0 ? "text-income" : "text-expense"
-                    }`}>
-                      {account.inflow - account.outflow >= 0 ? "+" : ""}
-                      ¥{(account.inflow - account.outflow).toLocaleString("ja-JP")}
-                    </span>
+              {cashFlowByAccount.map((account, index) => {
+                const isExpanded = expandedAccounts.has(account.accountId);
+                const hasDetails = account.byCategory.length > 0;
+                const netFlow = account.inflow - account.outflow;
+
+                return (
+                  <div key={account.accountId}>
+                    <motion.div
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      onClick={() => hasDetails && toggleExpand(account.accountId)}
+                      className={`bg-card rounded-xl p-4 border border-border ${
+                        hasDetails ? "cursor-pointer hover:bg-accent transition-colors" : ""
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                          {hasDetails && (
+                            <motion.div
+                              animate={{ rotate: isExpanded ? 180 : 0 }}
+                              transition={{ duration: 0.2 }}
+                            >
+                              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                            </motion.div>
+                          )}
+                          <span className="font-medium">{account.accountName}</span>
+                          {hasDetails && (
+                            <span className="text-xs text-muted-foreground">
+                              ({account.transactions.length}件)
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`font-heading font-bold tabular-nums ${
+                            netFlow >= 0 ? "text-income" : "text-expense"
+                          }`}
+                        >
+                          {netFlow >= 0 ? "+" : ""}¥{netFlow.toLocaleString("ja-JP")}
+                        </span>
+                      </div>
+                      <div className="flex gap-4 text-xs text-muted-foreground">
+                        {account.inflow > 0 && (
+                          <span className="text-income">
+                            +¥{account.inflow.toLocaleString("ja-JP")}
+                          </span>
+                        )}
+                        {account.outflow > 0 && (
+                          <span className="text-expense">
+                            -¥{account.outflow.toLocaleString("ja-JP")}
+                          </span>
+                        )}
+                      </div>
+                    </motion.div>
+
+                    {/* Expanded Category Breakdown */}
+                    <AnimatePresence>
+                      {isExpanded && hasDetails && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="ml-4 mt-2 space-y-2 border-l-2 border-primary/20 pl-4"
+                        >
+                          <p className="text-xs text-muted-foreground">カテゴリ別内訳</p>
+                          {account.byCategory.map((cat) => (
+                            <motion.div
+                              key={cat.categoryId}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className="bg-secondary/50 rounded-lg p-3 flex justify-between items-center"
+                            >
+                              <span className="text-sm">{cat.categoryName}</span>
+                              <span className="font-heading font-bold tabular-nums text-sm text-expense">
+                                ¥{cat.amount.toLocaleString("ja-JP")}
+                              </span>
+                            </motion.div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                  <div className="flex gap-4 text-xs text-muted-foreground">
-                    {account.inflow > 0 && (
-                      <span className="text-income">
-                        +¥{account.inflow.toLocaleString("ja-JP")}
-                      </span>
-                    )}
-                    {account.outflow > 0 && (
-                      <span className="text-expense">
-                        -¥{account.outflow.toLocaleString("ja-JP")}
-                      </span>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -275,8 +377,12 @@ export default function CFReportPage() {
         <div className="bg-secondary/30 rounded-xl p-4 text-sm text-muted-foreground">
           <p className="font-medium mb-2">PLとCFの違い</p>
           <ul className="space-y-1 text-xs">
-            <li>• <strong>PL（損益）</strong>: 発生日ベース、期間按分を考慮</li>
-            <li>• <strong>CF（現金）</strong>: 支払日ベース、実際の現金移動</li>
+            <li>
+              • <strong>PL（損益）</strong>: 発生日ベース、期間按分を考慮
+            </li>
+            <li>
+              • <strong>CF（現金）</strong>: 支払日ベース、実際の現金移動
+            </li>
           </ul>
         </div>
       </div>
