@@ -145,8 +145,9 @@ export function TransactionForm() {
 
     try {
       // Insert transaction
-      // 発生日=支払日の場合は即決済済み（現金払い等）
-      const isCashSettled = accrualDate === paymentDate;
+      // 収入が多い場合は入金済みとして扱う
+      // 支出の場合、発生日=支払日なら即決済済み
+      const isCashSettled = isIncomeTransaction || accrualDate === paymentDate;
 
       const { data: transaction, error: transactionError } = await supabase
         .from("transactions")

@@ -359,17 +359,17 @@ export default function PLReportPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-card rounded-xl p-4 border border-border"
+            className="bg-card rounded-xl p-3 border border-border"
           >
-            <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className="w-4 h-4 text-income" />
+            <div className="flex items-center gap-1 mb-1">
+              <TrendingUp className="w-3 h-3 text-income flex-shrink-0" />
               <p className="text-xs text-muted-foreground">収入</p>
             </div>
-            <p className="font-heading text-lg font-bold tabular-nums text-income">
+            <p className="font-heading text-sm font-bold tabular-nums text-income whitespace-nowrap overflow-hidden">
               ¥{totalIncome.toLocaleString("ja-JP")}
             </p>
           </motion.div>
@@ -378,13 +378,13 @@ export default function PLReportPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className="bg-card rounded-xl p-4 border border-border"
+            className="bg-card rounded-xl p-3 border border-border"
           >
-            <div className="flex items-center gap-2 mb-1">
-              <TrendingDown className="w-4 h-4 text-expense" />
+            <div className="flex items-center gap-1 mb-1">
+              <TrendingDown className="w-3 h-3 text-expense flex-shrink-0" />
               <p className="text-xs text-muted-foreground">支出</p>
             </div>
-            <p className="font-heading text-lg font-bold tabular-nums text-expense">
+            <p className="font-heading text-sm font-bold tabular-nums text-expense whitespace-nowrap overflow-hidden">
               ¥{totalExpense.toLocaleString("ja-JP")}
             </p>
           </motion.div>
@@ -393,11 +393,11 @@ export default function PLReportPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-card rounded-xl p-4 border border-border"
+            className="bg-card rounded-xl p-3 border border-border"
           >
             <p className="text-xs text-muted-foreground mb-1">収支</p>
             <p
-              className={`font-heading text-lg font-bold tabular-nums ${
+              className={`font-heading text-sm font-bold tabular-nums whitespace-nowrap overflow-hidden ${
                 netIncome >= 0 ? "text-income" : "text-expense"
               }`}
             >

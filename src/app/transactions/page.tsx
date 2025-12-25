@@ -19,6 +19,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+interface TransactionLine {
+  amount: number;
+  line_type: string;
+}
+
 interface Transaction {
   id: string;
   date: string;
@@ -26,6 +31,7 @@ interface Transaction {
   description: string;
   total_amount: number;
   account: { name: string } | null;
+  transaction_lines: TransactionLine[];
 }
 
 interface GroupedTransactions {
@@ -48,7 +54,8 @@ export default function TransactionsPage() {
         payment_date,
         description,
         total_amount,
-        account:accounts(name)
+        account:accounts(name),
+        transaction_lines(amount, line_type)
       `)
       .order("date", { ascending: false })
       .order("created_at", { ascending: false })
@@ -146,41 +153,52 @@ export default function TransactionsPage() {
 
                   {/* Transactions */}
                   <div className="space-y-2">
-                    {group.transactions.map((tx) => (
-                      <motion.div
-                        key={tx.id}
-                        layout
-                        className="bg-card rounded-xl border border-border overflow-hidden"
-                      >
-                        <div className="flex items-center">
-                          <Link
-                            href={`/transactions/${tx.id}`}
-                            className="flex-1 p-4 hover:bg-accent transition-colors"
-                          >
-                            <div className="flex justify-between items-start">
-                              <div className="space-y-1">
-                                <p className="font-medium">{tx.description}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {tx.account?.name || "不明"}
-                                </p>
+                    {group.transactions.map((tx) => {
+                      // Calculate if this is primarily income or expense
+                      const incomeTotal = tx.transaction_lines
+                        ?.filter((l) => l.line_type === "income")
+                        .reduce((sum, l) => sum + l.amount, 0) || 0;
+                      const expenseTotal = tx.transaction_lines
+                        ?.filter((l) => l.line_type !== "income")
+                        .reduce((sum, l) => sum + l.amount, 0) || 0;
+                      const isIncome = incomeTotal > expenseTotal;
+
+                      return (
+                        <motion.div
+                          key={tx.id}
+                          layout
+                          className="bg-card rounded-xl border border-border overflow-hidden"
+                        >
+                          <div className="flex items-center">
+                            <Link
+                              href={`/transactions/${tx.id}`}
+                              className="flex-1 p-4 hover:bg-accent transition-colors"
+                            >
+                              <div className="flex justify-between items-start">
+                                <div className="space-y-1">
+                                  <p className="font-medium">{tx.description}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {tx.account?.name || "不明"}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-heading font-bold tabular-nums ${isIncome ? "text-income" : "text-expense"}`}>
+                                    {isIncome ? "+" : "-"}¥{tx.total_amount.toLocaleString("ja-JP")}
+                                  </span>
+                                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-heading font-bold tabular-nums text-expense">
-                                  -¥{tx.total_amount.toLocaleString("ja-JP")}
-                                </span>
-                                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                              </div>
-                            </div>
-                          </Link>
-                          <button
-                            onClick={() => setDeleteId(tx.id)}
-                            className="p-4 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </motion.div>
-                    ))}
+                            </Link>
+                            <button
+                              onClick={() => setDeleteId(tx.id)}
+                              className="p-4 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 </motion.div>
               ))}

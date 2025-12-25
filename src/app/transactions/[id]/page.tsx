@@ -115,6 +115,15 @@ export default function TransactionDetailPage({
     );
   }
 
+  // Calculate if this is primarily income or expense
+  const incomeTotal = transaction.transaction_lines
+    ?.filter((l) => l.line_type === "income")
+    .reduce((sum, l) => sum + l.amount, 0) || 0;
+  const expenseTotal = transaction.transaction_lines
+    ?.filter((l) => l.line_type !== "income")
+    .reduce((sum, l) => sum + l.amount, 0) || 0;
+  const isIncome = incomeTotal > expenseTotal;
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -137,8 +146,8 @@ export default function TransactionDetailPage({
         >
           <div className="text-center mb-4">
             <p className="text-muted-foreground text-sm mb-1">{transaction.description}</p>
-            <p className="font-heading text-3xl font-bold tabular-nums text-expense">
-              -¥{transaction.total_amount.toLocaleString("ja-JP")}
+            <p className={`font-heading text-3xl font-bold tabular-nums ${isIncome ? "text-income" : "text-expense"}`}>
+              {isIncome ? "+" : "-"}¥{transaction.total_amount.toLocaleString("ja-JP")}
             </p>
           </div>
 
@@ -153,7 +162,7 @@ export default function TransactionDetailPage({
             <div className="flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-muted-foreground" />
               <div>
-                <p className="text-muted-foreground text-xs">支払日</p>
+                <p className="text-muted-foreground text-xs">{isIncome ? "入金日" : "支払日"}</p>
                 <p>
                   {transaction.payment_date
                     ? format(new Date(transaction.payment_date), "yyyy/M/d", { locale: ja })
@@ -164,7 +173,7 @@ export default function TransactionDetailPage({
             <div className="flex items-center gap-2 col-span-2">
               <Wallet className="w-4 h-4 text-muted-foreground" />
               <div>
-                <p className="text-muted-foreground text-xs">支払い方法</p>
+                <p className="text-muted-foreground text-xs">{isIncome ? "入金先" : "支払い方法"}</p>
                 <p>{transaction.account?.name || "不明"}</p>
               </div>
             </div>
@@ -175,23 +184,25 @@ export default function TransactionDetailPage({
         <div>
           <h2 className="text-sm font-medium text-muted-foreground mb-3">内訳</h2>
           <div className="space-y-3">
-            {transaction.transaction_lines.map((line, index) => (
-              <motion.div
-                key={line.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="bg-card rounded-xl p-4 border border-border"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium">{line.category?.name || "未分類"}</span>
+            {transaction.transaction_lines.map((line, index) => {
+              const lineIsIncome = line.line_type === "income";
+              return (
+                <motion.div
+                  key={line.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="bg-card rounded-xl p-4 border border-border"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-medium">{line.category?.name || "未分類"}</span>
+                    </div>
+                    <span className={`font-heading font-bold tabular-nums ${lineIsIncome ? "text-income" : "text-expense"}`}>
+                      {lineIsIncome ? "+" : "-"}¥{line.amount.toLocaleString("ja-JP")}
+                    </span>
                   </div>
-                  <span className="font-heading font-bold tabular-nums">
-                    ¥{line.amount.toLocaleString("ja-JP")}
-                  </span>
-                </div>
 
                 <div className="flex flex-wrap gap-2 text-xs">
                   <span className="px-2 py-1 bg-secondary rounded-full">
@@ -217,7 +228,8 @@ export default function TransactionDetailPage({
                   </p>
                 )}
               </motion.div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
