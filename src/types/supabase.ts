@@ -178,6 +178,8 @@ export type Database = {
           date: string
           description: string
           id: string
+          is_cash_settled: boolean
+          payment_date: string | null
           total_amount: number
         }
         Insert: {
@@ -186,6 +188,8 @@ export type Database = {
           date?: string
           description: string
           id?: string
+          is_cash_settled?: boolean
+          payment_date?: string | null
           total_amount: number
         }
         Update: {
@@ -194,6 +198,8 @@ export type Database = {
           date?: string
           description?: string
           id?: string
+          is_cash_settled?: boolean
+          payment_date?: string | null
           total_amount?: number
         }
         Relationships: [

@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Wallet, Tag, Database, Info, ArrowRight } from "lucide-react";
+import { Wallet, Tag, Database, Info, ArrowRight, CreditCard } from "lucide-react";
 
 const settingsItems = [
+  {
+    title: "カード決済消し込み",
+    description: "カード引き落とし済みを記録",
+    icon: CreditCard,
+    href: "/cash-settlements",
+  },
   {
     title: "口座管理",
     description: "銀行口座やカードを追加・編集",

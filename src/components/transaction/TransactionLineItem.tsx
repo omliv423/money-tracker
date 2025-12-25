@@ -1,9 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Trash2 } from "lucide-react";
+import { Trash2, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -22,6 +23,8 @@ export interface LineItemData {
   categoryId: string;
   lineType: LineType;
   counterparty: string | null;
+  amortizationMonths: number;
+  amortizationEndDate: string | null; // 終了日（null = 按分なし）
 }
 
 interface TransactionLineItemProps {
@@ -38,6 +41,7 @@ const lineTypeOptions: { value: LineType; label: string }[] = [
   { value: "asset", label: "立替（債権）" },
   { value: "liability", label: "借入（債務）" },
 ];
+
 
 export function TransactionLineItem({
   line,
@@ -147,6 +151,46 @@ export function TransactionLineItem({
             value={line.counterparty || ""}
             onChange={(e) => onChange({ ...line, counterparty: e.target.value || null })}
           />
+        </div>
+      )}
+
+      {/* Amortization Period (for expense only) */}
+      {line.lineType === "expense" && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={`amortize-${line.id}`}
+              checked={line.amortizationEndDate !== null}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  // デフォルトで年末を設定
+                  const year = new Date().getFullYear();
+                  onChange({ ...line, amortizationEndDate: `${year}-12-31` });
+                } else {
+                  onChange({ ...line, amortizationEndDate: null, amortizationMonths: 1 });
+                }
+              }}
+            />
+            <label
+              htmlFor={`amortize-${line.id}`}
+              className="text-xs text-muted-foreground cursor-pointer"
+            >
+              期間按分する
+            </label>
+          </div>
+          {line.amortizationEndDate && (
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> 按分終了日
+              </label>
+              <Input
+                type="date"
+                value={line.amortizationEndDate}
+                onChange={(e) => onChange({ ...line, amortizationEndDate: e.target.value })}
+                className="w-full"
+              />
+            </div>
+          )}
         </div>
       )}
     </motion.div>

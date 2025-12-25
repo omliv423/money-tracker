@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Check, Calendar, Wallet, FileText } from "lucide-react";
-import { format } from "date-fns";
+import { Plus, Check, Calendar, Wallet, FileText, CreditCard } from "lucide-react";
+import { format, differenceInMonths } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +32,8 @@ export function TransactionForm() {
 
   const [step, setStep] = useState<"amount" | "details">("amount");
   const [totalAmount, setTotalAmount] = useState(0);
-  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [accrualDate, setAccrualDate] = useState(format(new Date(), "yyyy-MM-dd")); // 発生日
+  const [paymentDate, setPaymentDate] = useState(format(new Date(), "yyyy-MM-dd")); // 支払日
   const [description, setDescription] = useState("");
   const [accountId, setAccountId] = useState("");
   const [lines, setLines] = useState<LineItemData[]>([
@@ -42,6 +43,8 @@ export function TransactionForm() {
       categoryId: "",
       lineType: "expense",
       counterparty: null,
+      amortizationMonths: 1,
+      amortizationEndDate: null,
     },
   ]);
   const [isSaving, setIsSaving] = useState(false);
@@ -95,6 +98,8 @@ export function TransactionForm() {
         categoryId: "",
         lineType: "expense",
         counterparty: null,
+        amortizationMonths: 1,
+        amortizationEndDate: null,
       },
     ]);
   };
@@ -117,13 +122,18 @@ export function TransactionForm() {
 
     try {
       // Insert transaction
+      // 発生日=支払日の場合は即決済済み（現金払い等）
+      const isCashSettled = accrualDate === paymentDate;
+
       const { data: transaction, error: transactionError } = await supabase
         .from("transactions")
         .insert({
-          date,
+          date: accrualDate, // 発生日
+          payment_date: paymentDate, // 支払日
           description,
           account_id: accountId,
           total_amount: totalAmount,
+          is_cash_settled: isCashSettled,
         })
         .select()
         .single();
@@ -131,14 +141,30 @@ export function TransactionForm() {
       if (transactionError) throw transactionError;
 
       // Insert transaction lines
-      const lineInserts = lines.map((line) => ({
-        transaction_id: transaction.id,
-        amount: line.amount,
-        category_id: line.categoryId,
-        line_type: line.lineType,
-        counterparty: line.counterparty,
-        is_settled: false,
-      }));
+      const lineInserts = lines.map((line) => {
+        const hasAmortization = line.amortizationEndDate !== null;
+        let amortizationMonths = 1;
+
+        if (hasAmortization && line.amortizationEndDate) {
+          const startDate = new Date(accrualDate);
+          const endDate = new Date(line.amortizationEndDate);
+          // 月数を計算（開始月と終了月を含むため +1）
+          amortizationMonths = differenceInMonths(endDate, startDate) + 1;
+          if (amortizationMonths < 1) amortizationMonths = 1;
+        }
+
+        return {
+          transaction_id: transaction.id,
+          amount: line.amount,
+          category_id: line.categoryId,
+          line_type: line.lineType,
+          counterparty: line.counterparty,
+          is_settled: false,
+          amortization_months: amortizationMonths,
+          amortization_start: hasAmortization ? accrualDate : null,
+          amortization_end: hasAmortization ? line.amortizationEndDate : null,
+        };
+      });
 
       const { error: linesError } = await supabase
         .from("transaction_lines")
@@ -149,6 +175,8 @@ export function TransactionForm() {
       // Reset form
       setTotalAmount(0);
       setDescription("");
+      setAccrualDate(format(new Date(), "yyyy-MM-dd"));
+      setPaymentDate(format(new Date(), "yyyy-MM-dd"));
       setLines([
         {
           id: generateId(),
@@ -156,6 +184,8 @@ export function TransactionForm() {
           categoryId: "",
           lineType: "expense",
           counterparty: null,
+          amortizationMonths: 1,
+          amortizationEndDate: null,
         },
       ]);
       setStep("amount");
@@ -209,7 +239,7 @@ export function TransactionForm() {
           {step === "amount" ? "支出を記録" : "詳細を入力"}
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
-          {format(new Date(date), "yyyy年M月d日(E)", { locale: ja })}
+          {format(new Date(accrualDate), "yyyy年M月d日(E)", { locale: ja })}
         </p>
       </div>
 
@@ -252,43 +282,57 @@ export function TransactionForm() {
               </div>
             </div>
 
-            {/* Date & Account */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> 日付
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> 発生日
                 </label>
                 <Input
                   type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  value={accrualDate}
+                  onChange={(e) => setAccrualDate(e.target.value)}
+                  className="w-full"
                 />
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                  <Wallet className="w-3 h-3" /> 口座
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CreditCard className="w-3 h-3" /> 支払日
                 </label>
-                <Select value={accountId} onValueChange={setAccountId}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name}
-                        {account.owner === "shared" && (
-                          <span className="ml-1 text-xs text-muted-foreground">(共同)</span>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full"
+                />
               </div>
             </div>
 
+            {/* Payment Method */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground flex items-center gap-1">
+                <Wallet className="w-3 h-3" /> 支払い方法
+              </label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                      {account.owner === "shared" && (
+                        <span className="ml-1 text-xs text-muted-foreground">(共同)</span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Description */}
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground flex items-center gap-1">
                 <FileText className="w-3 h-3" /> 説明
               </label>
               <Input
