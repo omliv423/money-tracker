@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ChevronRight, Calendar, Trash2 } from "lucide-react";
-import { format } from "date-fns";
+import { ChevronRight, Calendar, Trash2, Filter, X } from "lucide-react";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ja } from "date-fns/locale";
-import { supabase } from "@/lib/supabase";
+import { supabase, type Tables } from "@/lib/supabase";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,9 +22,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+type Account = Tables<"accounts">;
+type Category = Tables<"categories">;
+
 interface TransactionLine {
   amount: number;
   line_type: string;
+  category_id: string | null;
 }
 
 interface Transaction {
@@ -30,6 +37,7 @@ interface Transaction {
   payment_date: string | null;
   description: string;
   total_amount: number;
+  account_id: string | null;
   account: { name: string } | null;
   transaction_lines: TransactionLine[];
 }
@@ -39,42 +47,141 @@ interface GroupedTransactions {
   transactions: Transaction[];
 }
 
-export default function TransactionsPage() {
-  const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransactions[]>([]);
+interface Filters {
+  accountId: string;
+  categoryId: string;
+  transactionType: string; // "all" | "income" | "expense"
+  dateFrom: string;
+  dateTo: string;
+}
+
+function TransactionsContent() {
+  const searchParams = useSearchParams();
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Initialize with empty strings to avoid hydration mismatch
+  const [filters, setFilters] = useState<Filters>({
+    accountId: "all",
+    categoryId: "all",
+    transactionType: "all",
+    dateFrom: "",
+    dateTo: "",
+  });
+
+  // Read URL parameters on mount
+  useEffect(() => {
+    const categoryId = searchParams.get("categoryId");
+    const accountId = searchParams.get("accountId");
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
+    const transactionType = searchParams.get("type");
+
+    const hasUrlParams = categoryId || accountId || dateFrom || dateTo || transactionType;
+
+    if (hasUrlParams) {
+      setFilters((prev) => ({
+        ...prev,
+        categoryId: categoryId || "all",
+        accountId: accountId || "all",
+        dateFrom: dateFrom || "",
+        dateTo: dateTo || "",
+        transactionType: transactionType || "all",
+      }));
+      setShowFilters(true);
+    }
+    // Default: no date filtering (dateFrom and dateTo remain empty)
+    setIsInitialized(true);
+  }, [searchParams]);
 
   const fetchTransactions = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from("transactions")
-      .select(`
-        id,
-        date,
-        payment_date,
-        description,
-        total_amount,
-        account:accounts(name),
-        transaction_lines(amount, line_type)
-      `)
-      .order("date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(100);
 
-    if (error) {
-      console.error("Error fetching transactions:", error);
+    // Fetch accounts and categories in parallel
+    const [txResponse, accountsResponse, categoriesResponse] = await Promise.all([
+      supabase
+        .from("transactions")
+        .select(`
+          id,
+          date,
+          payment_date,
+          description,
+          total_amount,
+          account_id,
+          account:accounts(name),
+          transaction_lines(amount, line_type, category_id)
+        `)
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(500),
+      supabase.from("accounts").select("*").eq("is_active", true).order("name"),
+      supabase.from("categories").select("*").eq("is_active", true).order("name"),
+    ]);
+
+    if (txResponse.error) {
+      console.error("Error fetching transactions:", txResponse.error);
       setIsLoading(false);
       return;
     }
 
+    setAllTransactions((txResponse.data || []) as Transaction[]);
+    setAccounts(accountsResponse.data || []);
+    setCategories(categoriesResponse.data || []);
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
+
+  // Apply filters and group transactions
+  const groupedTransactions = useMemo(() => {
+    let filtered = allTransactions;
+
+    // Filter by date range
+    if (filters.dateFrom) {
+      filtered = filtered.filter((tx) => tx.date >= filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      filtered = filtered.filter((tx) => tx.date <= filters.dateTo);
+    }
+
+    // Filter by account
+    if (filters.accountId !== "all") {
+      filtered = filtered.filter((tx) => tx.account_id === filters.accountId);
+    }
+
+    // Filter by category
+    if (filters.categoryId !== "all") {
+      filtered = filtered.filter((tx) =>
+        tx.transaction_lines.some((line) => line.category_id === filters.categoryId)
+      );
+    }
+
+    // Filter by transaction type
+    if (filters.transactionType === "income") {
+      filtered = filtered.filter((tx) =>
+        tx.transaction_lines.some((line) => line.line_type === "income")
+      );
+    } else if (filters.transactionType === "expense") {
+      filtered = filtered.filter((tx) =>
+        tx.transaction_lines.some((line) => line.line_type === "expense")
+      );
+    }
+
     // Group by date
     const grouped: Map<string, Transaction[]> = new Map();
-    (data || []).forEach((tx) => {
+    filtered.forEach((tx) => {
       const dateKey = tx.date;
       if (!grouped.has(dateKey)) {
         grouped.set(dateKey, []);
       }
-      grouped.get(dateKey)!.push(tx as Transaction);
+      grouped.get(dateKey)!.push(tx);
     });
 
     const result: GroupedTransactions[] = [];
@@ -82,13 +189,25 @@ export default function TransactionsPage() {
       result.push({ date, transactions });
     });
 
-    setGroupedTransactions(result);
-    setIsLoading(false);
+    return result;
+  }, [allTransactions, filters]);
+
+  const clearFilters = () => {
+    setFilters({
+      accountId: "all",
+      categoryId: "all",
+      transactionType: "all",
+      dateFrom: "",
+      dateTo: "",
+    });
   };
 
-  useEffect(() => {
-    fetchTransactions();
-  }, []);
+  const hasActiveFilters =
+    filters.accountId !== "all" ||
+    filters.categoryId !== "all" ||
+    filters.transactionType !== "all" ||
+    filters.dateFrom !== "" ||
+    filters.dateTo !== "";
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -126,7 +245,186 @@ export default function TransactionsPage() {
   return (
     <MainLayout>
       <div className="space-y-6">
-        <h1 className="font-heading text-2xl font-bold">取引一覧</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-heading text-2xl font-bold">取引一覧</h1>
+          <Button
+            variant={showFilters ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="gap-2"
+          >
+            <Filter className="w-4 h-4" />
+            {hasActiveFilters && <span className="w-2 h-2 bg-primary rounded-full" />}
+          </Button>
+        </div>
+
+        {/* Filter Panel */}
+        <AnimatePresence>
+          {showFilters && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-card rounded-xl border border-border overflow-hidden"
+            >
+              <div className="p-4 space-y-4">
+                {/* Date Range */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-2 block">期間</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={filters.dateFrom}
+                      onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                      className="flex-1 text-sm"
+                    />
+                    <span className="text-muted-foreground text-sm">〜</span>
+                    <Input
+                      type="date"
+                      value={filters.dateTo}
+                      onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                      className="flex-1 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Transaction Type Filter */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-2 block">種別</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: "all", label: "すべて" },
+                      { value: "income", label: "収入" },
+                      { value: "expense", label: "支出" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setFilters({ ...filters, transactionType: opt.value })}
+                        className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                          filters.transactionType === opt.value
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary hover:bg-accent"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Account Filter */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-2 block">口座</label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setFilters({ ...filters, accountId: "all" })}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                        filters.accountId === "all"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary hover:bg-accent"
+                      }`}
+                    >
+                      すべて
+                    </button>
+                    {accounts.map((acc) => (
+                      <button
+                        key={acc.id}
+                        onClick={() => setFilters({ ...filters, accountId: acc.id })}
+                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                          filters.accountId === acc.id
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary hover:bg-accent"
+                        }`}
+                      >
+                        {acc.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Category Filter - Chip style grouped by parent */}
+                <div>
+                  <label className="text-xs text-muted-foreground mb-2 block">カテゴリ</label>
+                  <div className="space-y-3">
+                    {/* すべてボタン */}
+                    <button
+                      onClick={() => setFilters({ ...filters, categoryId: "all" })}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                        filters.categoryId === "all"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary hover:bg-accent"
+                      }`}
+                    >
+                      すべて
+                    </button>
+
+                    {/* 親カテゴリでグループ化 */}
+                    {categories
+                      .filter((cat) => cat.parent_id === null)
+                      .map((parent) => {
+                        const children = categories.filter((c) => c.parent_id === parent.id);
+                        if (children.length === 0) {
+                          // 子なし親カテゴリ
+                          return (
+                            <button
+                              key={parent.id}
+                              onClick={() => setFilters({ ...filters, categoryId: parent.id })}
+                              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                                filters.categoryId === parent.id
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-secondary hover:bg-accent"
+                              }`}
+                            >
+                              {parent.name}
+                            </button>
+                          );
+                        }
+                        // 子ありの場合
+                        return (
+                          <div key={parent.id}>
+                            <p className="text-xs text-muted-foreground mb-1.5">{parent.name}</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {children.map((child) => (
+                                <button
+                                  key={child.id}
+                                  onClick={() => setFilters({ ...filters, categoryId: child.id })}
+                                  className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
+                                    filters.categoryId === child.id
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-secondary hover:bg-accent"
+                                  }`}
+                                >
+                                  {child.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {/* Clear Filters */}
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="w-full text-muted-foreground"
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    フィルターをクリア
+                  </Button>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Results count */}
+        <div className="text-sm text-muted-foreground">
+          {groupedTransactions.reduce((sum, g) => sum + g.transactions.length, 0)}件の取引
+        </div>
 
         {groupedTransactions.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -225,5 +523,25 @@ export default function TransactionsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </MainLayout>
+  );
+}
+
+export default function TransactionsPage() {
+  return (
+    <Suspense
+      fallback={
+        <MainLayout>
+          <div className="flex items-center justify-center py-12">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+              className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full"
+            />
+          </div>
+        </MainLayout>
+      }
+    >
+      <TransactionsContent />
+    </Suspense>
   );
 }

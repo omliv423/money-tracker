@@ -11,9 +11,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup,
-  SelectLabel,
 } from "@/components/ui/select";
+import { CategoryPicker } from "./CategoryPicker";
 import type { Tables } from "@/lib/supabase";
 
 type Category = Tables<"categories">;
@@ -88,13 +87,8 @@ export function TransactionLineItem({
 
   const isAssetOrLiability = line.lineType === "asset" || line.lineType === "liability";
 
-  // Filter categories based on line type
+  // Category type based on line type
   const categoryType = line.lineType === "income" ? "income" : "expense";
-  const filteredCategories = categories.filter((cat) => cat.type === categoryType);
-
-  // Build hierarchical category structure
-  const parentCategories = filteredCategories.filter((cat) => cat.parent_id === null);
-  const getChildren = (parentId: string) => filteredCategories.filter((cat) => cat.parent_id === parentId);
 
   return (
     <div className="bg-card rounded-xl p-4 space-y-3 border border-border">
@@ -152,40 +146,12 @@ export function TransactionLineItem({
       <div className="flex gap-3">
         <div className="flex-1">
           <label className="text-xs text-muted-foreground mb-1 block">カテゴリ</label>
-          <Select
-            value={line.categoryId}
-            onValueChange={(value) => onChange({ ...line, categoryId: value })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="選択してください" />
-            </SelectTrigger>
-            <SelectContent>
-              {parentCategories.map((parent) => {
-                const children = getChildren(parent.id);
-                if (children.length === 0) {
-                  // No children, show as regular item
-                  return (
-                    <SelectItem key={parent.id} value={parent.id}>
-                      {parent.name}
-                    </SelectItem>
-                  );
-                }
-                // Has children, show as group
-                return (
-                  <SelectGroup key={parent.id}>
-                    <SelectLabel className="text-xs font-semibold text-muted-foreground px-2">
-                      {parent.name}
-                    </SelectLabel>
-                    {children.map((child) => (
-                      <SelectItem key={child.id} value={child.id} className="pl-6">
-                        {child.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          <CategoryPicker
+            categories={categories}
+            selectedId={line.categoryId}
+            onSelect={(categoryId) => onChange({ ...line, categoryId })}
+            type={categoryType}
+          />
         </div>
 
         {canDelete && (

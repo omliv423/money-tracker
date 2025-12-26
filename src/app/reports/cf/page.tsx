@@ -69,7 +69,9 @@ interface MonthlyData {
 
 export default function CFReportPage() {
   const router = useRouter();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  // Use dummy date to avoid hydration mismatch, will be set to current date in useEffect
+  const [currentMonth, setCurrentMonth] = useState(new Date(2000, 0, 1));
+  const [isMonthInitialized, setIsMonthInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [cashFlowByAccount, setCashFlowByAccount] = useState<AccountCashFlow[]>([]);
   const [totalInflow, setTotalInflow] = useState(0);
@@ -79,6 +81,13 @@ export default function CFReportPage() {
   const [showChart, setShowChart] = useState(false);
 
   useEffect(() => {
+    // Initialize currentMonth on client side to avoid hydration mismatch
+    if (!isMonthInitialized) {
+      setCurrentMonth(new Date());
+      setIsMonthInitialized(true);
+      return;
+    }
+
     async function fetchData() {
       setIsLoading(true);
 
@@ -86,21 +95,32 @@ export default function CFReportPage() {
       const monthEnd = format(endOfMonth(currentMonth), "yyyy-MM-dd");
 
       // Fetch transactions with lines for category breakdown
-      const { data: transactions, error } = await supabase
-        .from("transactions")
-        .select(`
-          id,
-          date,
-          payment_date,
-          description,
-          total_amount,
-          account:accounts(id, name),
-          counterparty:counterparties(id, name),
-          transaction_lines(amount, line_type, category:categories(id, name, parent_id))
-        `)
-        .gte("payment_date", monthStart)
-        .lte("payment_date", monthEnd)
-        .order("payment_date", { ascending: false });
+      const [txResponse, settlementsResponse] = await Promise.all([
+        supabase
+          .from("transactions")
+          .select(`
+            id,
+            date,
+            payment_date,
+            description,
+            total_amount,
+            account:accounts(id, name),
+            counterparty:counterparties(id, name),
+            transaction_lines(amount, line_type, category:categories(id, name, parent_id, type))
+          `)
+          .gte("payment_date", monthStart)
+          .lte("payment_date", monthEnd)
+          .order("payment_date", { ascending: false }),
+        // Fetch settlements (精算) for this month
+        supabase
+          .from("settlements")
+          .select("*")
+          .gte("date", monthStart)
+          .lte("date", monthEnd),
+      ]);
+
+      const { data: transactions, error } = txResponse;
+      const { data: settlements } = settlementsResponse;
 
       if (error) {
         console.error("Error fetching transactions:", error);
@@ -131,10 +151,18 @@ export default function CFReportPage() {
 
         // Process transaction lines
         (typedTx.transaction_lines || []).forEach((line) => {
+          // Exclude transfer categories (資金移動)
+          if ((line.category as any)?.type === "transfer") return;
+
           const categoryId = line.category?.id || "unknown";
           const categoryName = line.category?.name || "未分類";
 
-          if (line.line_type === "income") {
+          // Cash flow logic:
+          // - income: 収入 → 入金
+          // - liability: 借入 → 入金
+          // - expense: 支出 → 出金
+          // - asset: 立替・貸付 → 出金
+          if (line.line_type === "income" || line.line_type === "liability") {
             account.inflow += line.amount;
           } else {
             account.outflow += line.amount;
@@ -157,6 +185,38 @@ export default function CFReportPage() {
         });
       });
 
+      // Add settlements as inflows (精算での入金)
+      // Settlements are tracked separately and represent money received from counterparties
+      let settlementInflow = 0;
+      (settlements || []).forEach((settlement: any) => {
+        settlementInflow += settlement.amount;
+      });
+
+      // Add settlement inflow to a special "精算" category
+      if (settlementInflow > 0) {
+        // Add to "その他" or create a settlement entry
+        const settlementAccountId = "settlement";
+        if (!accountMap.has(settlementAccountId)) {
+          accountMap.set(settlementAccountId, {
+            accountId: settlementAccountId,
+            accountName: "精算受取",
+            inflow: 0,
+            outflow: 0,
+            byCategory: [],
+            transactions: [],
+          });
+        }
+        const settlementAccount = accountMap.get(settlementAccountId)!;
+        settlementAccount.inflow += settlementInflow;
+        (settlements || []).forEach((s: any) => {
+          settlementAccount.transactions.push({
+            description: s.counterparty + "から精算",
+            amount: s.amount,
+            counterparty: s.counterparty,
+          });
+        });
+      }
+
       // Sort categories by amount
       accountMap.forEach((account) => {
         account.byCategory.sort((a, b) => b.amount - a.amount);
@@ -177,25 +237,44 @@ export default function CFReportPage() {
         const mStart = format(startOfMonth(targetMonth), "yyyy-MM-dd");
         const mEnd = format(endOfMonth(targetMonth), "yyyy-MM-dd");
 
-        const { data: monthTx } = await supabase
-          .from("transactions")
-          .select(`
-            transaction_lines(amount, line_type)
-          `)
-          .gte("payment_date", mStart)
-          .lte("payment_date", mEnd);
+        const [monthTxRes, monthSettlementsRes] = await Promise.all([
+          supabase
+            .from("transactions")
+            .select(`
+              transaction_lines(amount, line_type, category:categories(type))
+            `)
+            .gte("payment_date", mStart)
+            .lte("payment_date", mEnd),
+          supabase
+            .from("settlements")
+            .select("amount")
+            .gte("date", mStart)
+            .lte("date", mEnd),
+        ]);
+
+        const monthTx = monthTxRes.data;
+        const monthSettlements = monthSettlementsRes.data;
 
         let monthInflow = 0;
         let monthOutflow = 0;
 
         (monthTx || []).forEach((tx: any) => {
           (tx.transaction_lines || []).forEach((line: any) => {
-            if (line.line_type === "income") {
+            // Exclude transfer categories (資金移動)
+            if (line.category?.type === "transfer") return;
+
+            // Cash flow logic
+            if (line.line_type === "income" || line.line_type === "liability") {
               monthInflow += line.amount;
-            } else if (line.line_type === "expense") {
+            } else if (line.line_type === "expense" || line.line_type === "asset") {
               monthOutflow += line.amount;
             }
           });
+        });
+
+        // Add settlement inflows
+        (monthSettlements || []).forEach((s: any) => {
+          monthInflow += s.amount;
         });
 
         monthlyData.push({
@@ -210,7 +289,7 @@ export default function CFReportPage() {
     }
 
     fetchData();
-  }, [currentMonth]);
+  }, [currentMonth, isMonthInitialized]);
 
   const netCashFlow = totalInflow - totalOutflow;
 
@@ -229,7 +308,7 @@ export default function CFReportPage() {
     });
   };
 
-  if (isLoading) {
+  if (isLoading || !isMonthInitialized) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center py-12">
@@ -319,8 +398,8 @@ export default function CFReportPage() {
                       }
                     />
                     <Tooltip
-                      formatter={(value: number) =>
-                        `¥${value.toLocaleString("ja-JP")}`
+                      formatter={(value) =>
+                        `¥${Number(value).toLocaleString("ja-JP")}`
                       }
                     />
                     <Legend

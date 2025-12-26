@@ -43,12 +43,13 @@ export default function ReportsPage() {
       const monthStart = format(startOfMonth(now), "yyyy-MM-dd");
       const monthEnd = format(endOfMonth(now), "yyyy-MM-dd");
 
-      // Fetch transaction lines for this month
+      // Fetch transaction lines for this month with category info
       const { data: lines } = await supabase
         .from("transaction_lines")
         .select(`
           amount,
           line_type,
+          category:categories(id, name, type),
           transaction:transactions(date)
         `);
 
@@ -57,6 +58,9 @@ export default function ReportsPage() {
 
       (lines || []).forEach((line: any) => {
         if (!line.transaction) return;
+        // Exclude transfer categories (資金移動)
+        if (line.category?.type === "transfer") return;
+
         const txDate = line.transaction.date;
         if (txDate >= monthStart && txDate <= monthEnd) {
           if (line.line_type === "income") {

@@ -81,7 +81,8 @@ interface MonthlyData {
 
 export default function PLReportPage() {
   const router = useRouter();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(new Date(2000, 0, 1)); // Dummy initial, updated in useEffect
+  const [isMonthInitialized, setIsMonthInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [incomeByParent, setIncomeByParent] = useState<ParentCategorySummary[]>([]);
   const [expenseByParent, setExpenseByParent] = useState<ParentCategorySummary[]>([]);
@@ -92,13 +93,20 @@ export default function PLReportPage() {
   const [showChart, setShowChart] = useState<"pie" | "bar" | null>(null);
 
   useEffect(() => {
+    // Initialize currentMonth on client side to avoid hydration mismatch
+    if (!isMonthInitialized) {
+      setCurrentMonth(new Date());
+      setIsMonthInitialized(true);
+      return;
+    }
+
     async function fetchData() {
       setIsLoading(true);
 
       const monthStart = startOfMonth(currentMonth);
       const monthEnd = endOfMonth(currentMonth);
 
-      // Fetch all transaction lines with categories (including parent_id) and counterparties
+      // Fetch all transaction lines with categories (including parent_id, type) and counterparties
       const { data: lines, error } = await supabase.from("transaction_lines").select(`
           id,
           amount,
@@ -106,7 +114,7 @@ export default function PLReportPage() {
           amortization_months,
           amortization_start,
           amortization_end,
-          category:categories(id, name, parent_id),
+          category:categories(id, name, parent_id, type),
           transaction:transactions(date, counterparty:counterparties(id, name))
         `);
 
@@ -167,6 +175,11 @@ export default function PLReportPage() {
 
         // Only include income and expense in PL (skip asset/liability)
         if (typedLine.line_type !== "income" && typedLine.line_type !== "expense") {
+          return;
+        }
+
+        // Skip transfer categories (資金移動はPLに計上しない)
+        if ((typedLine.category as any)?.type === "transfer") {
           return;
         }
 
@@ -263,6 +276,8 @@ export default function PLReportPage() {
           const typedLine = line as unknown as TransactionLine;
           if (!typedLine.transaction || !typedLine.category) return;
           if (typedLine.line_type !== "income" && typedLine.line_type !== "expense") return;
+          // Skip transfer categories (資金移動はPLに計上しない)
+          if ((typedLine.category as any)?.type === "transfer") return;
 
           const txDate = new Date(typedLine.transaction.date);
           let amountForMonth = 0;
@@ -328,7 +343,7 @@ export default function PLReportPage() {
     });
   };
 
-  if (isLoading) {
+  if (isLoading || !isMonthInitialized) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center py-12">
@@ -342,6 +357,13 @@ export default function PLReportPage() {
     );
   }
 
+  // カテゴリクリック時に取引一覧へ遷移
+  const navigateToTransactions = (categoryId: string) => {
+    const monthStart = format(startOfMonth(currentMonth), "yyyy-MM-dd");
+    const monthEnd = format(endOfMonth(currentMonth), "yyyy-MM-dd");
+    router.push(`/transactions?categoryId=${categoryId}&dateFrom=${monthStart}&dateTo=${monthEnd}`);
+  };
+
   const renderCategoryItem = (
     parent: ParentCategorySummary,
     colorClass: string,
@@ -350,16 +372,22 @@ export default function PLReportPage() {
     const isExpanded = expandedCategories.has(parent.categoryId);
     const hasChildren = parent.children.length > 0;
 
+    const handleParentClick = () => {
+      if (hasChildren) {
+        toggleExpand(parent.categoryId);
+      } else {
+        navigateToTransactions(parent.categoryId);
+      }
+    };
+
     return (
       <div key={parent.categoryId}>
         <motion.div
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: index * 0.03 }}
-          onClick={() => hasChildren && toggleExpand(parent.categoryId)}
-          className={`bg-card rounded-xl p-4 border border-border flex justify-between items-center ${
-            hasChildren ? "cursor-pointer hover:bg-accent transition-colors" : ""
-          }`}
+          onClick={handleParentClick}
+          className="bg-card rounded-xl p-4 border border-border flex justify-between items-center cursor-pointer hover:bg-accent transition-colors"
         >
           <div className="flex items-center gap-2">
             {hasChildren && (
@@ -396,7 +424,8 @@ export default function PLReportPage() {
                   key={child.categoryId}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="bg-secondary/50 rounded-lg p-3 flex justify-between items-center"
+                  onClick={() => navigateToTransactions(child.categoryId)}
+                  className="bg-secondary/50 rounded-lg p-3 flex justify-between items-center cursor-pointer hover:bg-accent transition-colors"
                 >
                   <span className="text-sm">{child.categoryName}</span>
                   <span className={`font-heading font-bold tabular-nums text-sm ${colorClass}`}>
@@ -554,8 +583,8 @@ export default function PLReportPage() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number) =>
-                        `¥${value.toLocaleString("ja-JP")}`
+                      formatter={(value) =>
+                        `¥${Number(value).toLocaleString("ja-JP")}`
                       }
                     />
                   </PieChart>
@@ -606,8 +635,8 @@ export default function PLReportPage() {
                       }
                     />
                     <Tooltip
-                      formatter={(value: number) =>
-                        `¥${value.toLocaleString("ja-JP")}`
+                      formatter={(value) =>
+                        `¥${Number(value).toLocaleString("ja-JP")}`
                       }
                     />
                     <Legend

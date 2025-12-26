@@ -12,36 +12,12 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       accounts: {
         Row: {
           created_at: string
+          current_balance: number | null
           id: string
           initial_balance: number
           is_active: boolean
@@ -51,6 +27,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_balance?: number | null
           id?: string
           initial_balance?: number
           is_active?: boolean
@@ -60,6 +37,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_balance?: number | null
           id?: string
           initial_balance?: number
           is_active?: boolean
@@ -101,29 +79,204 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "categories"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       counterparties: {
         Row: {
-          created_at: string
+          created_at: string | null
           id: string
-          is_active: boolean
+          is_active: boolean | null
           name: string
         }
         Insert: {
-          created_at?: string
+          created_at?: string | null
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           name: string
         }
         Update: {
-          created_at?: string
+          created_at?: string | null
           id?: string
-          is_active?: boolean
+          is_active?: boolean | null
           name?: string
         }
         Relationships: []
+      }
+      recurring_transactions: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          account_id: string | null
+          total_amount: number
+          day_of_month: number | null
+          payment_delay_days: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          account_id?: string | null
+          total_amount: number
+          day_of_month?: number | null
+          payment_delay_days?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          account_id?: string | null
+          total_amount?: number
+          day_of_month?: number | null
+          payment_delay_days?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      recurring_transaction_lines: {
+        Row: {
+          id: string
+          recurring_transaction_id: string
+          amount: number
+          category_id: string | null
+          line_type: string
+          counterparty: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          recurring_transaction_id: string
+          amount: number
+          category_id?: string | null
+          line_type: string
+          counterparty?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          recurring_transaction_id?: string
+          amount?: number
+          category_id?: string | null
+          line_type?: string
+          counterparty?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_transaction_lines_recurring_transaction_id_fkey"
+            columns: ["recurring_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_transaction_lines_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      quick_entries: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          account_id: string | null
+          category_id: string | null
+          line_type: string
+          counterparty: string | null
+          is_active: boolean
+          use_count: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          account_id?: string | null
+          category_id?: string | null
+          line_type?: string
+          counterparty?: string | null
+          is_active?: boolean
+          use_count?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          account_id?: string | null
+          category_id?: string | null
+          line_type?: string
+          counterparty?: string | null
+          is_active?: boolean
+          use_count?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quick_entries_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quick_entries_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      budgets: {
+        Row: {
+          id: string
+          category_id: string | null
+          monthly_amount: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          category_id?: string | null
+          monthly_amount: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          category_id?: string | null
+          monthly_amount?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budgets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: true
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       settlements: {
         Row: {
@@ -154,36 +307,48 @@ export type Database = {
       }
       transaction_lines: {
         Row: {
+          amortization_end: string | null
+          amortization_months: number | null
+          amortization_start: string | null
           amount: number
-          category_id: string
+          category_id: string | null
           counterparty: string | null
           created_at: string
           id: string
           is_settled: boolean
           line_type: string
           note: string | null
+          settled_amount: number | null
           transaction_id: string
         }
         Insert: {
+          amortization_end?: string | null
+          amortization_months?: number | null
+          amortization_start?: string | null
           amount: number
-          category_id: string
+          category_id?: string | null
           counterparty?: string | null
           created_at?: string
           id?: string
           is_settled?: boolean
           line_type: string
           note?: string | null
+          settled_amount?: number | null
           transaction_id: string
         }
         Update: {
+          amortization_end?: string | null
+          amortization_months?: number | null
+          amortization_start?: string | null
           amount?: number
-          category_id?: string
+          category_id?: string | null
           counterparty?: string | null
           created_at?: string
           id?: string
           is_settled?: boolean
           line_type?: string
           note?: string | null
+          settled_amount?: number | null
           transaction_id?: string
         }
         Relationships: [
@@ -211,8 +376,9 @@ export type Database = {
           date: string
           description: string
           id: string
-          is_cash_settled: boolean
+          is_cash_settled: boolean | null
           payment_date: string | null
+          settled_amount: number | null
           total_amount: number
         }
         Insert: {
@@ -222,8 +388,9 @@ export type Database = {
           date?: string
           description: string
           id?: string
-          is_cash_settled?: boolean
+          is_cash_settled?: boolean | null
           payment_date?: string | null
+          settled_amount?: number | null
           total_amount: number
         }
         Update: {
@@ -233,8 +400,9 @@ export type Database = {
           date?: string
           description?: string
           id?: string
-          is_cash_settled?: boolean
+          is_cash_settled?: boolean | null
           payment_date?: string | null
+          settled_amount?: number | null
           total_amount?: number
         }
         Relationships: [
@@ -388,9 +556,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },

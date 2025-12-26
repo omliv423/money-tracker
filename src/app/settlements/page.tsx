@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Users, ArrowUpRight, ArrowDownLeft, Plus, X } from "lucide-react";
+import { Users, ArrowUpRight, ArrowDownLeft, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,9 +12,36 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { supabase } from "@/lib/supabase";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { supabase, type Tables } from "@/lib/supabase";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
+
+type Account = Tables<"accounts">;
+
+interface TransactionLine {
+  id: string;
+  amount: number;
+  line_type: string;
+  counterparty: string;
+  transaction_id: string;
+}
 
 interface CounterpartyBalance {
   counterparty: string;
@@ -34,6 +61,7 @@ export default function SettlementsPage() {
   const [balances, setBalances] = useState<CounterpartyBalance[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [cashAccounts, setCashAccounts] = useState<Account[]>([]);
 
   // Dialog states
   const [showSettlementDialog, setShowSettlementDialog] = useState(false);
@@ -41,39 +69,73 @@ export default function SettlementsPage() {
   const [selectedCounterparty, setSelectedCounterparty] = useState("");
   const [settlementAmount, setSettlementAmount] = useState("");
   const [settlementNote, setSettlementNote] = useState("");
+  const [settlementDate, setSettlementDate] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  // Edit mode
+  const [editingSettlement, setEditingSettlement] = useState<Settlement | null>(null);
+
+  // Delete confirmation
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const fetchData = async () => {
     setIsLoading(true);
 
-    // 未精算の立替を集計
-    const { data: unsettledLines } = await supabase
+    // 現預金口座を取得（current_balanceが設定されているもの）
+    // current_balanceが設定されていない場合も選べるように、全てのアクティブ口座を取得
+    const { data: accountsData } = await supabase
+      .from("accounts")
+      .select("*")
+      .eq("is_active", true)
+      .order("name");
+
+    if (accountsData) {
+      setCashAccounts(accountsData);
+      if (!selectedAccountId && accountsData.length > 0) {
+        setSelectedAccountId(accountsData[0].id);
+      }
+    }
+
+    // 未精算の立替を集計（settled_amountを使った部分精算対応）
+    const { data: allLines } = await supabase
       .from("transaction_lines")
-      .select("counterparty, amount, line_type")
-      .eq("is_settled", false)
+      .select("counterparty, amount, line_type, is_settled, settled_amount")
       .not("counterparty", "is", null);
 
-    if (unsettledLines) {
+    if (allLines) {
       const balanceMap = new Map<string, { total: number; count: number }>();
 
-      unsettledLines.forEach((line) => {
+      allLines.forEach((line) => {
         if (!line.counterparty) return;
+
+        // 未精算金額を計算: amount - settled_amount
+        // is_settledがtrueでsettled_amountが0の場合は全額精算済み（旧データ対応）
+        const settledAmount = line.settled_amount ?? 0;
+        const unsettledAmount = line.is_settled && settledAmount === 0
+          ? 0  // 旧ロジックで精算済みになったもの
+          : line.amount - settledAmount;
+
+        if (unsettledAmount <= 0) return;  // 全額精算済みはスキップ
+
         const current = balanceMap.get(line.counterparty) || { total: 0, count: 0 };
         // asset = 立替（相手に貸してる）、liability = 借入（相手から借りてる）
-        const amount = line.line_type === "asset" ? line.amount : -line.amount;
+        const signedAmount = line.line_type === "asset" ? unsettledAmount : -unsettledAmount;
         balanceMap.set(line.counterparty, {
-          total: current.total + amount,
+          total: current.total + signedAmount,
           count: current.count + 1,
         });
       });
 
       const balanceList: CounterpartyBalance[] = [];
       balanceMap.forEach((value, key) => {
-        balanceList.push({
-          counterparty: key,
-          totalAmount: value.total,
-          count: value.count,
-        });
+        if (value.total !== 0) {  // 残高0はスキップ
+          balanceList.push({
+            counterparty: key,
+            totalAmount: value.total,
+            count: value.count,
+          });
+        }
       });
       setBalances(balanceList.sort((a, b) => b.totalAmount - a.totalAmount));
     }
@@ -96,11 +158,26 @@ export default function SettlementsPage() {
     fetchData();
   }, []);
 
-  const handleOpenSettlement = (type: "receive" | "pay", counterparty?: string) => {
+  const handleOpenSettlement = (type: "receive" | "pay", counterparty?: string, amount?: number) => {
+    setEditingSettlement(null);
     setSettlementType(type);
     setSelectedCounterparty(counterparty || "");
-    setSettlementAmount("");
+    setSettlementAmount(amount ? Math.abs(amount).toString() : "");
     setSettlementNote("");
+    setSettlementDate(format(new Date(), "yyyy-MM-dd"));
+    if (cashAccounts.length > 0 && !selectedAccountId) {
+      setSelectedAccountId(cashAccounts[0].id);
+    }
+    setShowSettlementDialog(true);
+  };
+
+  const handleEditSettlement = (settlement: Settlement) => {
+    setEditingSettlement(settlement);
+    setSettlementType(settlement.amount > 0 ? "receive" : "pay");
+    setSelectedCounterparty(settlement.counterparty);
+    setSettlementAmount(Math.abs(settlement.amount).toString());
+    setSettlementNote(settlement.note || "");
+    setSettlementDate(settlement.date);
     setShowSettlementDialog(true);
   };
 
@@ -109,25 +186,107 @@ export default function SettlementsPage() {
 
     setIsSaving(true);
     const amount = parseInt(settlementAmount, 10);
+    const signedAmount = settlementType === "receive" ? amount : -amount;
 
-    // 精算を記録
-    await supabase.from("settlements").insert({
-      date: format(new Date(), "yyyy-MM-dd"),
-      counterparty: selectedCounterparty,
-      amount: settlementType === "receive" ? amount : -amount,
-      note: settlementNote || null,
-    });
+    if (editingSettlement) {
+      // 編集モード: 既存の精算を更新
+      await supabase
+        .from("settlements")
+        .update({
+          date: settlementDate,
+          counterparty: selectedCounterparty,
+          amount: signedAmount,
+          note: settlementNote || null,
+        })
+        .eq("id", editingSettlement.id);
+    } else {
+      // 新規作成モード
+      // 精算を記録
+      await supabase.from("settlements").insert({
+        date: settlementDate,
+        counterparty: selectedCounterparty,
+        amount: signedAmount,
+        note: settlementNote || null,
+      });
 
-    // 該当する未精算の立替を精算済みにする
-    // （簡易実装：金額に関係なく全て精算済みにする）
-    await supabase
-      .from("transaction_lines")
-      .update({ is_settled: true })
-      .eq("counterparty", selectedCounterparty)
-      .eq("is_settled", false);
+      // 該当する未精算の立替を部分精算する
+      // 古い順に精算していく
+      const { data: allCounterpartyLines } = await supabase
+        .from("transaction_lines")
+        .select("id, amount, line_type, is_settled, settled_amount")
+        .eq("counterparty", selectedCounterparty)
+        .order("created_at", { ascending: true });
+
+      if (allCounterpartyLines && allCounterpartyLines.length > 0) {
+        let remainingSettlement = amount;
+
+        for (const line of allCounterpartyLines) {
+          // 未精算金額を計算
+          const settledAmount = line.settled_amount ?? 0;
+          const unsettledAmount = line.is_settled && settledAmount === 0
+            ? 0  // 旧ロジックで精算済み
+            : line.amount - settledAmount;
+
+          if (unsettledAmount <= 0) continue;  // 既に全額精算済み
+
+          // asset = 立替（受け取る）、liability = 借入（支払う）
+          const lineIsAsset = line.line_type === "asset";
+          const matchesType = settlementType === "receive" ? lineIsAsset : !lineIsAsset;
+
+          if (!matchesType) continue;
+
+          // この明細からいくら精算するか
+          const toSettle = Math.min(remainingSettlement, unsettledAmount);
+          const newSettledAmount = settledAmount + toSettle;
+
+          // 精算額を更新
+          await supabase
+            .from("transaction_lines")
+            .update({
+              settled_amount: newSettledAmount,
+              is_settled: newSettledAmount >= line.amount,  // 全額精算済みならtrue
+            })
+            .eq("id", line.id);
+
+          remainingSettlement -= toSettle;
+          if (remainingSettlement <= 0) break;
+        }
+      }
+
+      // 現預金口座の残高を更新（新規作成時のみ）
+      if (selectedAccountId && amount > 0) {
+        const selectedAccount = cashAccounts.find((a) => a.id === selectedAccountId);
+        if (selectedAccount) {
+          // current_balanceがnullの場合は0として扱う
+          const currentBalance = selectedAccount.current_balance ?? 0;
+          // receive = 受け取り（プラス）, pay = 支払い（マイナス）
+          const newBalance = settlementType === "receive"
+            ? currentBalance + amount
+            : currentBalance - amount;
+
+          await supabase
+            .from("accounts")
+            .update({ current_balance: newBalance })
+            .eq("id", selectedAccountId);
+        }
+      }
+    }
 
     setShowSettlementDialog(false);
+    setEditingSettlement(null);
     setIsSaving(false);
+    fetchData();
+  };
+
+  const handleDeleteSettlement = async () => {
+    if (!deleteId) return;
+
+    await supabase
+      .from("settlements")
+      .delete()
+      .eq("id", deleteId);
+
+    setDeleteId(null);
     fetchData();
   };
 
@@ -184,7 +343,8 @@ export default function SettlementsPage() {
                     <button
                       onClick={() => handleOpenSettlement(
                         balance.totalAmount > 0 ? "receive" : "pay",
-                        balance.counterparty
+                        balance.counterparty,
+                        balance.totalAmount
                       )}
                       className="flex items-center gap-2 hover:opacity-70 transition-opacity"
                     >
@@ -253,11 +413,25 @@ export default function SettlementsPage() {
                       {settlement.note && ` - ${settlement.note}`}
                     </p>
                   </div>
-                  <span className={`font-heading font-bold tabular-nums ${
-                    settlement.amount > 0 ? "text-income" : "text-expense"
-                  }`}>
-                    {settlement.amount > 0 ? "+" : ""}¥{Math.abs(settlement.amount).toLocaleString("ja-JP")}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className={`font-heading font-bold tabular-nums ${
+                      settlement.amount > 0 ? "text-income" : "text-expense"
+                    }`}>
+                      {settlement.amount > 0 ? "+" : ""}¥{Math.abs(settlement.amount).toLocaleString("ja-JP")}
+                    </span>
+                    <button
+                      onClick={() => handleEditSettlement(settlement)}
+                      className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                    >
+                      <Pencil className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteId(settlement.id)}
+                      className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -270,10 +444,22 @@ export default function SettlementsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {settlementType === "receive" ? "精算を記録" : "返済を記録"}
+              {editingSettlement
+                ? "精算を編集"
+                : settlementType === "receive"
+                ? "精算を記録"
+                : "返済を記録"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">日付</label>
+              <Input
+                type="date"
+                value={settlementDate}
+                onChange={(e) => setSettlementDate(e.target.value)}
+              />
+            </div>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">相手</label>
               <Input
@@ -296,6 +482,36 @@ export default function SettlementsPage() {
                 />
               </div>
             </div>
+
+            {/* 口座選択 */}
+            {cashAccounts.length > 0 && (
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  {settlementType === "receive" ? "受け取り口座" : "支払い口座"}
+                </label>
+                <Select
+                  value={selectedAccountId}
+                  onValueChange={setSelectedAccountId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="口座を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cashAccounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.name}
+                        {acc.current_balance !== null && (
+                          <span className="text-muted-foreground ml-2">
+                            (¥{acc.current_balance.toLocaleString()})
+                          </span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">メモ（任意）</label>
               <Input
@@ -309,11 +525,29 @@ export default function SettlementsPage() {
               disabled={!selectedCounterparty || !settlementAmount || isSaving}
               className="w-full"
             >
-              {isSaving ? "保存中..." : "記録する"}
+              {isSaving ? "保存中..." : editingSettlement ? "更新する" : "記録する"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>精算履歴を削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              この操作は取り消せません。精算履歴が完全に削除されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteSettlement}>
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 }

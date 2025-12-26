@@ -34,8 +34,9 @@ export function TransactionForm() {
 
   const [step, setStep] = useState<"amount" | "details">("amount");
   const [totalAmount, setTotalAmount] = useState(0);
-  const [accrualDate, setAccrualDate] = useState(format(new Date(), "yyyy-MM-dd")); // 発生日
-  const [paymentDate, setPaymentDate] = useState<string | null>(format(new Date(), "yyyy-MM-dd")); // 支払日（null=未定）
+  const [accrualDate, setAccrualDate] = useState(""); // 発生日
+  const [paymentDate, setPaymentDate] = useState<string | null>(""); // 支払日（null=未定）
+  const [isDateInitialized, setIsDateInitialized] = useState(false);
   const [description, setDescription] = useState("");
   const [accountId, setAccountId] = useState("");
   const [counterpartyId, setCounterpartyId] = useState<string | null>(null);
@@ -80,26 +81,45 @@ export function TransactionForm() {
     fetchData();
   }, []);
 
-  // Calculate income and expense totals
-  // asset/liabilityは残り金額の計算から除外（複式簿記の相手勘定として使用）
+  // Initialize dates on client side to avoid hydration mismatch
+  useEffect(() => {
+    if (!isDateInitialized) {
+      const today = format(new Date(), "yyyy-MM-dd");
+      setAccrualDate(today);
+      setPaymentDate(today);
+      setIsDateInitialized(true);
+    }
+  }, [isDateInitialized]);
+
+  // Calculate totals by type
   const incomeAmount = lines
     .filter((line) => line.lineType === "income")
     .reduce((sum, line) => sum + line.amount, 0);
   const expenseAmount = lines
     .filter((line) => line.lineType === "expense")
     .reduce((sum, line) => sum + line.amount, 0);
-
-  // Net amount (income - expense), can be positive or negative
-  // asset/liabilityは計算に含めない
-  const netAmount = incomeAmount - expenseAmount;
-
-  // Remaining: totalAmount should equal the absolute net amount
-  // e.g., income 530,000 - expense 124,021 = net 405,979
-  // if totalAmount is 405,979, remaining is 0
-  const remainingAmount = totalAmount - Math.abs(netAmount);
+  const assetAmount = lines
+    .filter((line) => line.lineType === "asset")
+    .reduce((sum, line) => sum + line.amount, 0);
+  const liabilityAmount = lines
+    .filter((line) => line.lineType === "liability")
+    .reduce((sum, line) => sum + line.amount, 0);
 
   // Determine if this is primarily an income transaction (for UI labels)
   const isIncomeTransaction = incomeAmount > expenseAmount;
+
+  // Calculate allocated amount based on transaction type
+  // 支出取引: expense + asset（立替）- income - liability = 合計金額
+  // 収入取引: income + liability（借入）- expense - asset = 合計金額
+  //
+  // 例1: 1000円の支出を折半 → expense 500 + asset 500 = 1000
+  // 例2: 582,460円の収入から122,321円源泉徴収 → income 582,460 - expense 122,321 = 460,139
+  const allocatedAmount = isIncomeTransaction
+    ? incomeAmount + liabilityAmount - expenseAmount - assetAmount
+    : expenseAmount + assetAmount - incomeAmount - liabilityAmount;
+
+  // Remaining amount
+  const remainingAmount = totalAmount - allocatedAmount;
 
   const handleNext = () => {
     if (totalAmount > 0) {
@@ -141,27 +161,57 @@ export function TransactionForm() {
     }
   };
 
+  // 共同カード選択時に自動で65:35の割合を設定
+  const handleAccountChange = (newAccountId: string) => {
+    setAccountId(newAccountId);
+
+    const selectedAccount = accounts.find((a) => a.id === newAccountId);
+    if (selectedAccount?.name === "共同カード" && lines.length === 1 && totalAmount > 0) {
+      // 65:35の割合で計算（自分65%、あさみ35%）
+      const myAmount = Math.round(totalAmount * 0.65);
+      const asamiAmount = totalAmount - myAmount;
+
+      setLines([
+        {
+          ...lines[0],
+          amount: myAmount,
+        },
+        {
+          id: generateId(),
+          amount: asamiAmount,
+          categoryId: lines[0].categoryId,
+          lineType: "asset",
+          counterparty: "あさみ",
+          amortizationMonths: 1,
+          amortizationEndDate: null,
+        },
+      ]);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setSaveMessage(null);
 
     try {
       // Insert transaction
-      // 収入が多い場合は入金済みとして扱う
-      // 支出の場合、発生日=支払日なら即決済済み
-      // 支払日が未定（null）の場合は未決済
-      const isCashSettled = paymentDate !== null && (isIncomeTransaction || accrualDate === paymentDate);
+      // 支払日/入金日が発生日以前なら決済済み
+      // 支払日/入金日が未定（null）または発生日より後の場合は未決済
+      // 収入の場合は未収金、支出の場合は未払金として計上
+      const isCashSettled = paymentDate !== null && paymentDate <= accrualDate;
+      const settledAmount = isCashSettled ? totalAmount : 0;
 
       const { data: transaction, error: transactionError } = await supabase
         .from("transactions")
         .insert({
           date: accrualDate, // 発生日
-          payment_date: paymentDate, // 支払日
+          payment_date: paymentDate, // 支払日/入金日
           description,
           account_id: accountId,
           counterparty_id: counterpartyId,
           total_amount: totalAmount,
           is_cash_settled: isCashSettled,
+          settled_amount: settledAmount,
         })
         .select()
         .single();
@@ -343,16 +393,16 @@ export function TransactionForm() {
                   </label>
                 </div>
               </div>
-              {paymentDate !== null && accrualDate !== paymentDate && (
-                <p className="text-xs text-muted-foreground text-center">
-                  ※ 発生日と{isIncomeTransaction ? "入金日" : "支払日"}が異なる場合、{isIncomeTransaction ? "未収金" : "未払金"}として計上されます
-                </p>
-              )}
-              {paymentDate === null && (
-                <p className="text-xs text-muted-foreground text-center">
-                  ※ {isIncomeTransaction ? "入金日" : "支払日"}が未定の場合、{isIncomeTransaction ? "未収金" : "未払金"}として計上されます
-                </p>
-              )}
+              {/* 決済状態プレビュー */}
+              <div className="text-xs text-center">
+                {paymentDate === null ? (
+                  <span className="text-orange-500">→ {isIncomeTransaction ? "未収金" : "未払金"}として計上されます</span>
+                ) : paymentDate <= accrualDate ? (
+                  <span className="text-green-500">→ 決済済み（BSに計上されない）</span>
+                ) : (
+                  <span className="text-orange-500">→ {isIncomeTransaction ? "未収金" : "未払金"}として計上されます（{isIncomeTransaction ? "入金日" : "支払日"}が発生日より後）</span>
+                )}
+              </div>
             </div>
 
             {/* Payment Method / Deposit Account */}
@@ -360,7 +410,7 @@ export function TransactionForm() {
               <label className="text-xs text-muted-foreground flex items-center gap-1">
                 <Wallet className="w-3 h-3" /> {isIncomeTransaction ? "入金先" : "支払い方法"}
               </label>
-              <Select value={accountId} onValueChange={setAccountId}>
+              <Select value={accountId} onValueChange={handleAccountChange}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>

@@ -1,13 +1,31 @@
 import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Wallet, Tag, Database, Info, ArrowRight, CreditCard, Store } from "lucide-react";
+import { Wallet, Tag, Database, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank } from "lucide-react";
 
 const settingsItems = [
   {
-    title: "カード決済消し込み",
-    description: "カード引き落とし済みを記録",
+    title: "入出金消し込み",
+    description: "入金・引き落とし済みを記録",
     icon: CreditCard,
     href: "/cash-settlements",
+  },
+  {
+    title: "定期取引",
+    description: "毎月の固定費をテンプレート登録",
+    icon: RefreshCw,
+    href: "/settings/recurring",
+  },
+  {
+    title: "クイック入力",
+    description: "よく使う取引パターンを登録",
+    icon: Zap,
+    href: "/settings/quick-entries",
+  },
+  {
+    title: "予算管理",
+    description: "カテゴリ別の月間予算を設定",
+    icon: PiggyBank,
+    href: "/settings/budgets",
   },
   {
     title: "口座管理",

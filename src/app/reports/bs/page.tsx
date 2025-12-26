@@ -29,6 +29,13 @@ const COLORS = {
 
 type Account = Tables<"accounts">;
 
+interface CashBalance {
+  accountId: string;
+  accountName: string;
+  balance: number;
+  type: string;
+}
+
 interface CategoryBreakdown {
   categoryId: string;
   categoryName: string;
@@ -49,11 +56,21 @@ interface CounterpartyBalance {
   amount: number;
 }
 
+// 未収金用の型
+interface AccountReceivable {
+  accountId: string;
+  accountName: string;
+  totalAmount: number;
+  transactionCount: number;
+}
+
 export default function BSReportPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [cashBalances, setCashBalances] = useState<CashBalance[]>([]);
   const [payablesByAccount, setPayablesByAccount] = useState<AccountPayable[]>([]);
+  const [receivablesByAccount, setReceivablesByAccount] = useState<AccountReceivable[]>([]);
   const [receivables, setReceivables] = useState<CounterpartyBalance[]>([]);
   const [liabilities, setLiabilities] = useState<CounterpartyBalance[]>([]);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
@@ -72,15 +89,28 @@ export default function BSReportPage() {
 
       if (accountData) {
         setAccounts(accountData);
+
+        // 現預金（current_balance が設定されている口座）
+        const cashList: CashBalance[] = accountData
+          .filter((acc) => acc.current_balance !== null && acc.current_balance !== 0)
+          .map((acc) => ({
+            accountId: acc.id,
+            accountName: acc.name,
+            balance: acc.current_balance || 0,
+            type: acc.type,
+          }))
+          .sort((a, b) => b.balance - a.balance);
+        setCashBalances(cashList);
       }
 
-      // Fetch unpaid transactions (未払金) - where is_cash_settled = false
-      // 未払金はexpense/incomeタイプの行のみを対象とする（asset/liabilityは除外）
+      // Fetch unpaid transactions (未払金/未収金) - where is_cash_settled = false
+      // 未払金はexpense、未収金はincomeタイプの行を持つ取引を対象とする
       const { data: unpaidTransactions } = await supabase
         .from("transactions")
         .select(`
           id,
           total_amount,
+          settled_amount,
           account_id,
           account:accounts(id, name),
           transaction_lines(
@@ -93,6 +123,7 @@ export default function BSReportPage() {
 
       // Aggregate by account
       const accountPayableMap = new Map<string, AccountPayable>();
+      const accountReceivableMap = new Map<string, AccountReceivable>();
 
       (unpaidTransactions || []).forEach((tx: any) => {
         if (!tx.account) return;
@@ -100,53 +131,82 @@ export default function BSReportPage() {
         const accountId = tx.account.id;
         const accountName = tx.account.name;
 
-        // expense行があるかチェック（支出を含む取引のみ未払金として計上）
-        const hasExpense = (tx.transaction_lines || []).some(
-          (line: any) => line.line_type === "expense"
-        );
-
-        if (!hasExpense) return;
-
-        if (!accountPayableMap.has(accountId)) {
-          accountPayableMap.set(accountId, {
-            accountId,
-            accountName,
-            totalAmount: 0,
-            transactionCount: 0,
-            categories: [],
-          });
-        }
-
-        const payable = accountPayableMap.get(accountId)!;
-
-        // 取引全体のtotal_amountを未払金として計上（立替を含む場合も全額カード払い）
-        payable.totalAmount += tx.total_amount;
-        payable.transactionCount += 1;
-
-        // カテゴリ別内訳（expense/asset両方を含む）
+        // 入金と出金の合計を計算してネット金額で判定
+        // 入金 = income + liability (借入)
+        // 出金 = expense + asset (立替含む)
+        let totalInflow = 0;
+        let totalOutflow = 0;
         (tx.transaction_lines || []).forEach((line: any) => {
-          // income/liabilityは除外
-          if (line.line_type !== "expense" && line.line_type !== "asset") return;
-
-          const categoryId = line.category?.id || `${line.line_type}-uncategorized`;
-          const categoryName = line.category?.name || (line.line_type === "asset" ? "立替金" : "未分類");
-
-          // line_typeごとに分けて集計
-          const key = `${categoryId}-${line.line_type}`;
-          const existingCat = payable.categories.find(
-            (c) => c.categoryId === key
-          );
-          if (existingCat) {
-            existingCat.amount += line.amount;
-          } else {
-            payable.categories.push({
-              categoryId: key,
-              categoryName: categoryName,
-              amount: line.amount,
-              lineType: line.line_type,
-            });
+          if (line.line_type === "income" || line.line_type === "liability") {
+            totalInflow += line.amount;
+          } else if (line.line_type === "expense" || line.line_type === "asset") {
+            totalOutflow += line.amount;
           }
         });
+
+        // 一部消し込み対応：残額を計算
+        const remainingAmount = tx.total_amount - (tx.settled_amount || 0);
+
+        // ネット金額で未収金か未払金かを判定（重複計上を防ぐ）
+        const isNetReceivable = totalInflow > totalOutflow;
+        const isNetPayable = totalOutflow > totalInflow;
+
+        // 未収金として集計（入金 > 出金の取引）
+        if (isNetReceivable) {
+          if (!accountReceivableMap.has(accountId)) {
+            accountReceivableMap.set(accountId, {
+              accountId,
+              accountName,
+              totalAmount: 0,
+              transactionCount: 0,
+            });
+          }
+          const receivable = accountReceivableMap.get(accountId)!;
+          receivable.totalAmount += remainingAmount;
+          receivable.transactionCount += 1;
+        }
+
+        // 未払金として集計（出金 > 入金の取引、立替含む）
+        if (isNetPayable) {
+          if (!accountPayableMap.has(accountId)) {
+            accountPayableMap.set(accountId, {
+              accountId,
+              accountName,
+              totalAmount: 0,
+              transactionCount: 0,
+              categories: [],
+            });
+          }
+
+          const payable = accountPayableMap.get(accountId)!;
+          payable.totalAmount += remainingAmount;
+          payable.transactionCount += 1;
+
+          // カテゴリ別内訳（expense/asset両方を含む）
+          (tx.transaction_lines || []).forEach((line: any) => {
+            // income/liabilityは除外
+            if (line.line_type !== "expense" && line.line_type !== "asset") return;
+
+            const categoryId = line.category?.id || `${line.line_type}-uncategorized`;
+            const categoryName = line.category?.name || (line.line_type === "asset" ? "立替金" : "未分類");
+
+            // line_typeごとに分けて集計
+            const key = `${categoryId}-${line.line_type}`;
+            const existingCat = payable.categories.find(
+              (c) => c.categoryId === key
+            );
+            if (existingCat) {
+              existingCat.amount += line.amount;
+            } else {
+              payable.categories.push({
+                categoryId: key,
+                categoryName: categoryName,
+                amount: line.amount,
+                lineType: line.line_type,
+              });
+            }
+          });
+        }
       });
 
       const payableList = Array.from(accountPayableMap.values())
@@ -159,11 +219,15 @@ export default function BSReportPage() {
 
       setPayablesByAccount(payableList);
 
-      // Fetch unsettled receivables/liabilities (立替・借入)
+      // 未収金リストを設定
+      const receivableList = Array.from(accountReceivableMap.values())
+        .sort((a, b) => b.totalAmount - a.totalAmount);
+      setReceivablesByAccount(receivableList);
+
+      // Fetch unsettled receivables/liabilities (立替・借入) - 部分精算対応
       const { data: lines } = await supabase
         .from("transaction_lines")
-        .select("amount, line_type, counterparty")
-        .eq("is_settled", false)
+        .select("amount, line_type, counterparty, is_settled, settled_amount")
         .not("counterparty", "is", null);
 
       const receivableMap = new Map<string, number>();
@@ -172,22 +236,31 @@ export default function BSReportPage() {
       (lines || []).forEach((line) => {
         if (!line.counterparty) return;
 
+        // 未精算金額を計算: amount - settled_amount
+        // is_settledがtrueでsettled_amountが0の場合は全額精算済み（旧データ対応）
+        const settledAmount = line.settled_amount ?? 0;
+        const unsettledAmount = line.is_settled && settledAmount === 0
+          ? 0  // 旧ロジックで精算済みになったもの
+          : line.amount - settledAmount;
+
+        if (unsettledAmount <= 0) return;  // 全額精算済みはスキップ
+
         if (line.line_type === "asset") {
           receivableMap.set(
             line.counterparty,
-            (receivableMap.get(line.counterparty) || 0) + line.amount
+            (receivableMap.get(line.counterparty) || 0) + unsettledAmount
           );
         } else if (line.line_type === "liability") {
           liabilityMap.set(
             line.counterparty,
-            (liabilityMap.get(line.counterparty) || 0) + line.amount
+            (liabilityMap.get(line.counterparty) || 0) + unsettledAmount
           );
         }
       });
 
-      const receivableList: CounterpartyBalance[] = [];
+      const counterpartyReceivableList: CounterpartyBalance[] = [];
       receivableMap.forEach((amount, counterparty) => {
-        receivableList.push({ counterparty, amount });
+        counterpartyReceivableList.push({ counterparty, amount });
       });
 
       const liabilityList: CounterpartyBalance[] = [];
@@ -195,7 +268,7 @@ export default function BSReportPage() {
         liabilityList.push({ counterparty, amount });
       });
 
-      setReceivables(receivableList.sort((a, b) => b.amount - a.amount));
+      setReceivables(counterpartyReceivableList.sort((a, b) => b.amount - a.amount));
       setLiabilities(liabilityList.sort((a, b) => b.amount - a.amount));
       setIsLoading(false);
     }
@@ -216,11 +289,13 @@ export default function BSReportPage() {
   };
 
   const totalPayables = payablesByAccount.reduce((sum, p) => sum + p.totalAmount, 0);
-  const totalReceivables = receivables.reduce((sum, r) => sum + r.amount, 0);
+  const totalReceivables = receivables.reduce((sum, r) => sum + r.amount, 0); // 立替金
+  const totalAccountsReceivable = receivablesByAccount.reduce((sum, r) => sum + r.totalAmount, 0); // 未収金
   const totalBorrowings = liabilities.reduce((sum, l) => sum + l.amount, 0);
+  const totalCash = cashBalances.reduce((sum, c) => sum + c.balance, 0); // 現預金
 
-  // 資産合計 = 立替金（債権）
-  const totalAssets = totalReceivables;
+  // 資産合計 = 現預金 + 立替金（債権）+ 未収金
+  const totalAssets = totalCash + totalReceivables + totalAccountsReceivable;
   // 負債合計 = 未払金 + 借入金
   const totalLiabilities = totalPayables + totalBorrowings;
   // 純資産 = 資産 - 負債
@@ -323,14 +398,28 @@ export default function BSReportPage() {
                 <div className="border-r border-border pr-2">
                   <p className="text-xs text-muted-foreground text-center mb-2 font-medium">資産</p>
                   <div className="space-y-1">
-                    {receivables.length > 0 ? (
-                      receivables.map((item) => (
-                        <div key={item.counterparty} className="flex justify-between text-xs">
-                          <span className="truncate">{item.counterparty}</span>
-                          <span className="text-income ml-1">¥{item.amount.toLocaleString()}</span>
-                        </div>
-                      ))
-                    ) : (
+                    {/* 現預金 */}
+                    {cashBalances.map((item) => (
+                      <div key={item.accountId} className="flex justify-between text-xs">
+                        <span className="truncate">{item.accountName}</span>
+                        <span className="text-income ml-1">¥{item.balance.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {/* 未収金 */}
+                    {receivablesByAccount.map((item) => (
+                      <div key={item.accountId} className="flex justify-between text-xs">
+                        <span className="truncate">未収金({item.accountName})</span>
+                        <span className="text-income ml-1">¥{item.totalAmount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {/* 立替金 */}
+                    {receivables.map((item) => (
+                      <div key={item.counterparty} className="flex justify-between text-xs">
+                        <span className="truncate">立替({item.counterparty})</span>
+                        <span className="text-income ml-1">¥{item.amount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {cashBalances.length === 0 && receivablesByAccount.length === 0 && receivables.length === 0 && (
                       <p className="text-xs text-muted-foreground text-center">-</p>
                     )}
                   </div>
@@ -386,6 +475,74 @@ export default function BSReportPage() {
         {/* 資産の部 */}
         <div className="space-y-4">
           <h2 className="text-base font-bold border-b border-border pb-2">資産の部</h2>
+
+          {/* 現預金 */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-income" />
+              現預金
+            </h3>
+            {cashBalances.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4 text-sm">現預金の登録なし</p>
+            ) : (
+              <div className="space-y-2">
+                {cashBalances.map((item, index) => (
+                  <motion.div
+                    key={item.accountId}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Wallet className="w-4 h-4 text-muted-foreground" />
+                      <span>{item.accountName}</span>
+                    </div>
+                    <span className="font-heading font-bold tabular-nums text-income">
+                      ¥{item.balance.toLocaleString("ja-JP")}
+                    </span>
+                  </motion.div>
+                ))}
+                <div className="bg-secondary/30 rounded-lg p-3 flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">現預金計</span>
+                  <span className="font-heading font-bold tabular-nums text-income">
+                    ¥{totalCash.toLocaleString("ja-JP")}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 未収金 */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-income" />
+              未収金
+            </h3>
+            {receivablesByAccount.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4 text-sm">未収金なし</p>
+            ) : (
+              <div className="space-y-2">
+                {receivablesByAccount.map((item, index) => (
+                  <motion.div
+                    key={item.accountId}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
+                  >
+                    <div>
+                      <p>{item.accountName}</p>
+                      <p className="text-xs text-muted-foreground">{item.transactionCount}件</p>
+                    </div>
+                    <span className="font-heading font-bold tabular-nums text-income">
+                      ¥{item.totalAmount.toLocaleString("ja-JP")}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* 立替金（債権） */}
           <div>
