@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Check, Calendar, Wallet, FileText, CreditCard, Store } from "lucide-react";
+import { Plus, Check, Calendar, Wallet, FileText, CreditCard, Store, AlertTriangle } from "lucide-react";
 import { format, differenceInMonths } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { AmountInput } from "./AmountInput";
 import { TransactionLineItem, type LineItemData } from "./TransactionLineItem";
 import { supabase, type Tables } from "@/lib/supabase";
@@ -53,6 +63,9 @@ export function TransactionForm() {
   ]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
 
   // Fetch accounts, categories, and counterparties on mount
   useEffect(() => {
@@ -189,7 +202,62 @@ export function TransactionForm() {
     }
   };
 
+  // 重複チェック関数
+  const checkForDuplicates = async () => {
+    setIsCheckingDuplicate(true);
+    setDuplicateWarning(null);
+
+    try {
+      // 1ヶ月前の日付を計算
+      const oneMonthAgo = new Date(accrualDate);
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      const oneMonthAgoStr = format(oneMonthAgo, "yyyy-MM-dd");
+
+      // 直近1ヶ月の同金額の取引を検索
+      const { data: recentTx } = await supabase
+        .from("transactions")
+        .select("id, description, date, total_amount")
+        .eq("total_amount", totalAmount)
+        .gte("date", oneMonthAgoStr)
+        .lte("date", accrualDate)
+        .order("date", { ascending: false });
+
+      if (recentTx && recentTx.length > 0) {
+        // 完全一致: 同日・同金額
+        const exactMatch = recentTx.filter((tx) => tx.date === accrualDate);
+
+        if (exactMatch.length > 0) {
+          const txList = exactMatch.map((tx) => tx.description).join("、");
+          setDuplicateWarning(
+            `同日・同額の取引が既に存在します: ${txList}`
+          );
+        } else {
+          // 部分一致: 直近1ヶ月の同金額
+          const txList = recentTx
+            .slice(0, 3)
+            .map((tx) => `${format(new Date(tx.date), "M/d")} ${tx.description}`)
+            .join("、");
+          const moreCount = recentTx.length > 3 ? ` 他${recentTx.length - 3}件` : "";
+          setDuplicateWarning(
+            `直近1ヶ月に同額の取引があります: ${txList}${moreCount}`
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Duplicate check error:", error);
+    } finally {
+      setIsCheckingDuplicate(false);
+    }
+  };
+
+  // 確認ダイアログを開く
+  const handleConfirmClick = async () => {
+    await checkForDuplicates();
+    setShowConfirmDialog(true);
+  };
+
   const handleSave = async () => {
+    setShowConfirmDialog(false);
     setIsSaving(true);
     setSaveMessage(null);
 
@@ -499,12 +567,12 @@ export function TransactionForm() {
 
             {/* Save Button */}
             <Button
-              onClick={handleSave}
-              disabled={!canSave || isSaving}
+              onClick={handleConfirmClick}
+              disabled={!canSave || isSaving || isCheckingDuplicate}
               className="w-full h-14 text-lg font-medium"
               size="lg"
             >
-              {isSaving ? (
+              {isSaving || isCheckingDuplicate ? (
                 <motion.div
                   animate={{ rotate: 360 }}
                   transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
@@ -513,12 +581,94 @@ export function TransactionForm() {
               ) : (
                 <>
                   <Check className="w-5 h-5 mr-2" />
-                  記録する
+                  確認する
                 </>
               )}
             </Button>
           </div>
         )}
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent className="max-w-sm mx-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>入力内容の確認</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-left">
+                {/* 重複警告 */}
+                {duplicateWarning && (
+                  <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 flex items-start gap-2">
+                    <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                    <div className="text-sm text-destructive">
+                      {duplicateWarning}
+                    </div>
+                  </div>
+                )}
+
+                {/* 取引サマリー */}
+                <div className="bg-muted rounded-lg p-3 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-sm">金額</span>
+                    <span className={`font-bold ${isIncomeTransaction ? "text-income" : "text-expense"}`}>
+                      {isIncomeTransaction ? "+" : "-"}¥{totalAmount.toLocaleString("ja-JP")}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-sm">説明</span>
+                    <span className="font-medium text-foreground">{description}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-sm">発生日</span>
+                    <span className="text-foreground">{format(new Date(accrualDate), "M月d日(E)", { locale: ja })}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-sm">{isIncomeTransaction ? "入金先" : "支払い方法"}</span>
+                    <span className="text-foreground">{accounts.find((a) => a.id === accountId)?.name || "-"}</span>
+                  </div>
+                </div>
+
+                {/* 内訳 */}
+                <div className="space-y-1">
+                  <p className="text-muted-foreground text-sm">内訳</p>
+                  <div className="bg-muted rounded-lg divide-y divide-border">
+                    {lines.map((line, index) => {
+                      const category = categories.find((c) => c.id === line.categoryId);
+                      const typeLabel =
+                        line.lineType === "income" ? "収入" :
+                        line.lineType === "expense" ? "支出" :
+                        line.lineType === "asset" ? "立替" : "借入";
+                      return (
+                        <div key={line.id} className="p-2 flex justify-between items-center text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-1.5 py-0.5 rounded text-xs ${
+                              line.lineType === "income" ? "bg-income/20 text-income" :
+                              line.lineType === "asset" ? "bg-blue-500/20 text-blue-600" :
+                              "bg-expense/20 text-expense"
+                            }`}>
+                              {typeLabel}
+                            </span>
+                            <span className="text-foreground">{category?.name || "未分類"}</span>
+                            {line.counterparty && (
+                              <span className="text-muted-foreground">({line.counterparty})</span>
+                            )}
+                          </div>
+                          <span className="font-medium text-foreground">¥{line.amount.toLocaleString("ja-JP")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row gap-2">
+            <AlertDialogCancel className="flex-1 mt-0">戻る</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSave} className="flex-1">
+              記録する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
