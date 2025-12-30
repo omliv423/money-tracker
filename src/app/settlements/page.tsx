@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Users, ArrowUpRight, ArrowDownLeft, Pencil, Trash2 } from "lucide-react";
+import { Users, ArrowUpRight, ArrowDownLeft, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -43,10 +43,20 @@ interface TransactionLine {
   transaction_id: string;
 }
 
+interface UnsettledLine {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  settledAmount: number;
+  unsettledAmount: number;
+}
+
 interface CounterpartyBalance {
   counterparty: string;
   totalAmount: number;
   count: number;
+  lines: UnsettledLine[];
 }
 
 interface Settlement {
@@ -62,6 +72,7 @@ export default function SettlementsPage() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [cashAccounts, setCashAccounts] = useState<Account[]>([]);
+  const [expandedCounterparty, setExpandedCounterparty] = useState<string | null>(null);
 
   // Dialog states
   const [showSettlementDialog, setShowSettlementDialog] = useState(false);
@@ -100,13 +111,16 @@ export default function SettlementsPage() {
     // 未精算の立替を集計（settled_amountを使った部分精算対応）
     const { data: allLines } = await supabase
       .from("transaction_lines")
-      .select("counterparty, amount, line_type, is_settled, settled_amount")
+      .select(`
+        id, counterparty, amount, line_type, is_settled, settled_amount,
+        transaction:transactions(date, description)
+      `)
       .not("counterparty", "is", null);
 
     if (allLines) {
-      const balanceMap = new Map<string, { total: number; count: number }>();
+      const balanceMap = new Map<string, { total: number; count: number; lines: UnsettledLine[] }>();
 
-      allLines.forEach((line) => {
+      allLines.forEach((line: any) => {
         if (!line.counterparty) return;
 
         // 未精算金額を計算: amount - settled_amount
@@ -118,22 +132,36 @@ export default function SettlementsPage() {
 
         if (unsettledAmount <= 0) return;  // 全額精算済みはスキップ
 
-        const current = balanceMap.get(line.counterparty) || { total: 0, count: 0 };
+        const current = balanceMap.get(line.counterparty) || { total: 0, count: 0, lines: [] };
         // asset = 立替（相手に貸してる）、liability = 借入（相手から借りてる）
         const signedAmount = line.line_type === "asset" ? unsettledAmount : -unsettledAmount;
+
+        current.lines.push({
+          id: line.id,
+          date: line.transaction?.date || "",
+          description: line.transaction?.description || "",
+          amount: line.amount,
+          settledAmount: settledAmount,
+          unsettledAmount: unsettledAmount,
+        });
+
         balanceMap.set(line.counterparty, {
           total: current.total + signedAmount,
           count: current.count + 1,
+          lines: current.lines,
         });
       });
 
       const balanceList: CounterpartyBalance[] = [];
       balanceMap.forEach((value, key) => {
         if (value.total !== 0) {  // 残高0はスキップ
+          // 日付でソート
+          value.lines.sort((a, b) => a.date.localeCompare(b.date));
           balanceList.push({
             counterparty: key,
             totalAmount: value.total,
             count: value.count,
+            lines: value.lines,
           });
         }
       });
@@ -320,47 +348,98 @@ export default function SettlementsPage() {
               未精算の立替はありません
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <AnimatePresence>
-                {balances.map((balance) => (
-                  <motion.div
-                    key={balance.counterparty}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                        <Users className="w-5 h-5 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{balance.counterparty}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {balance.count}件の未精算
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleOpenSettlement(
-                        balance.totalAmount > 0 ? "receive" : "pay",
-                        balance.counterparty,
-                        balance.totalAmount
-                      )}
-                      className="flex items-center gap-2 hover:opacity-70 transition-opacity"
+                {balances.map((balance) => {
+                  const isExpanded = expandedCounterparty === balance.counterparty;
+                  return (
+                    <motion.div
+                      key={balance.counterparty}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-secondary/30 rounded-lg overflow-hidden"
                     >
-                      {balance.totalAmount > 0 ? (
-                        <ArrowUpRight className="w-4 h-4 text-income" />
-                      ) : (
-                        <ArrowDownLeft className="w-4 h-4 text-expense" />
-                      )}
-                      <span className={`font-heading font-bold tabular-nums ${
-                        balance.totalAmount > 0 ? "text-income" : "text-expense"
-                      }`}>
-                        ¥{Math.abs(balance.totalAmount).toLocaleString("ja-JP")}
-                      </span>
-                    </button>
-                  </motion.div>
-                ))}
+                      {/* Header row */}
+                      <div className="flex items-center justify-between p-3">
+                        <button
+                          onClick={() => setExpandedCounterparty(isExpanded ? null : balance.counterparty)}
+                          className="flex items-center gap-3 flex-1"
+                        >
+                          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+                            <Users className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-medium">{balance.counterparty}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {balance.count}件の未精算
+                            </p>
+                          </div>
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleOpenSettlement(
+                            balance.totalAmount > 0 ? "receive" : "pay",
+                            balance.counterparty,
+                            balance.totalAmount
+                          )}
+                          className="flex items-center gap-2 hover:opacity-70 transition-opacity ml-2"
+                        >
+                          {balance.totalAmount > 0 ? (
+                            <ArrowUpRight className="w-4 h-4 text-income" />
+                          ) : (
+                            <ArrowDownLeft className="w-4 h-4 text-expense" />
+                          )}
+                          <span className={`font-heading font-bold tabular-nums ${
+                            balance.totalAmount > 0 ? "text-income" : "text-expense"
+                          }`}>
+                            ¥{Math.abs(balance.totalAmount).toLocaleString("ja-JP")}
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* Expanded details */}
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="border-t border-border"
+                          >
+                            <div className="p-3 space-y-2">
+                              {balance.lines.map((line) => (
+                                <div
+                                  key={line.id}
+                                  className="flex items-center justify-between text-sm py-1"
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <p className="truncate">{line.description}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {line.date}
+                                      {line.settledAmount > 0 && (
+                                        <span className="ml-2">
+                                          (一部精算済: ¥{line.settledAmount.toLocaleString()})
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
+                                  <span className="font-mono text-right ml-2">
+                                    ¥{line.unsettledAmount.toLocaleString()}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
           )}
