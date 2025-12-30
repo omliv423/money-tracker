@@ -1,220 +1,284 @@
-# Row Level Security (RLS) 実装計画
+# Row Level Security (RLS) 完成版設計
 
-> 作成日: 2024-12-31
-> 目的: マルチテナント化に向けたRLS設計と実装手順
+> 更新日: 2024-12-31
+> ステータス: レビュー済み・改善版
 
-## 1. 現在のデータベース構造
+## 0. 現状の問題点
 
-### 1.1 テーブル一覧と目的
+### 致命的な問題
 
-| テーブル | 目的 | レコード所有者 | 現状のRLS |
-|---------|------|---------------|-----------|
-| `accounts` | 口座・財布管理 | ユーザー個人 | `USING (true)` |
-| `categories` | カテゴリ管理 | ユーザー個人 + 共有 | `USING (true)` |
-| `counterparties` | 取引相手マスタ | ユーザー個人 | `USING (true)` |
-| `transactions` | 取引ヘッダ | ユーザー個人 | `USING (true)` |
-| `transaction_lines` | 取引明細 | 親取引に従属 | `USING (true)` |
-| `settlements` | 精算記録 | ユーザー個人 | `USING (true)` |
-| `recurring_transactions` | 定期取引テンプレート | ユーザー個人 | `USING (true)` |
-| `recurring_transaction_lines` | 定期取引明細 | 親テンプレートに従属 | `USING (true)` |
-| `quick_entries` | クイック入力テンプレート | ユーザー個人 | `USING (true)` |
-| `budgets` | 予算設定 | ユーザー個人 | `USING (true)` |
+| 問題 | 影響 | ファイル |
+|------|------|---------|
+| **全テーブルが `USING(true)`** | 全データ漏洩・改ざん可能 | schema.sql, 全migrations |
+| **user_id カラムがない** | ユーザー分離不可能 | 全テーブル |
+| **budgets の UNIQUE制約** | マルチユーザーで破綻 | budgets テーブル |
+| **個人データが migrations に混在** | 他人に流すと事故 | 複数migrations |
+| **UUID関数が不統一** | 再現性低下 | schema.sql vs migrations |
 
-### 1.2 現在のスキーマ (抜粋)
+### 方針
 
-```sql
--- 主要テーブルの構造（user_id カラムなし）
+1. **schema.sql は開発用に限定**（本番migrationの唯一のソースはmigrations/）
+2. **全テーブルに user_id 追加**
+3. **RLSポリシーは操作別に分割**（ALL 1本ではなく SELECT/INSERT/UPDATE/DELETE）
+4. **参照先の所有権チェック必須**（FK先も自分のデータか確認）
+5. **gen_random_uuid() に統一**（pgcrypto使用）
 
-CREATE TABLE accounts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name TEXT NOT NULL,
-  type TEXT NOT NULL,
-  owner TEXT NOT NULL DEFAULT 'self',
-  initial_balance INTEGER NOT NULL DEFAULT 0,
-  current_balance INTEGER DEFAULT 0,
-  is_active BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  -- ⚠️ user_id がない
-);
+---
 
-CREATE TABLE transactions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  date DATE NOT NULL DEFAULT CURRENT_DATE,
-  payment_date DATE,
-  description TEXT NOT NULL,
-  account_id UUID NOT NULL REFERENCES accounts(id),
-  counterparty_id UUID REFERENCES counterparties(id),
-  total_amount INTEGER NOT NULL,
-  is_cash_settled BOOLEAN DEFAULT false,
-  settled_amount INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  -- ⚠️ user_id がない
-);
-```
+## 1. テーブル別 user_id 追加方針
 
-## 2. user_id カラム追加方針
-
-### 2.1 追加が必要なテーブル
-
-| テーブル | 追加方法 | 備考 |
-|---------|---------|------|
-| `accounts` | 直接追加 | 必須 |
-| `categories` | 直接追加 + NULL許容 | 共有カテゴリはNULL |
-| `counterparties` | 直接追加 | 必須 |
-| `transactions` | 直接追加 | 必須 |
-| `transaction_lines` | **不要** | transactions.user_id をJOINで参照 |
-| `settlements` | 直接追加 | 必須 |
-| `recurring_transactions` | 直接追加 | 必須 |
+| テーブル | user_id追加 | 備考 |
+|---------|------------|------|
+| `accounts` | 必須 | |
+| `categories` | 必須（NULL許容） | NULL = 共有カテゴリ |
+| `counterparties` | 必須 | |
+| `transactions` | 必須 | |
+| `transaction_lines` | **不要** | transactions.user_id を参照 |
+| `settlements` | 必須 | |
+| `recurring_transactions` | 必須 | |
 | `recurring_transaction_lines` | **不要** | 親を参照 |
-| `quick_entries` | 直接追加 | 必須 |
-| `budgets` | 直接追加 | 必須 |
+| `quick_entries` | 必須 | |
+| `budgets` | 必須 | UNIQUE制約も修正 |
 
-### 2.2 マイグレーションSQL
+---
+
+## 2. 完全版マイグレーションSQL
+
+### 2.1 user_id カラム追加
 
 ```sql
 -- ========================================
--- Migration: Add user_id to all tables
--- ファイル: supabase/migrations/20250101000000_add_user_id.sql
--- ⚠️ 実行前に既存データのバックアップを取ること
+-- Migration: 20250101000000_add_user_id_columns.sql
+-- 目的: 全テーブルにuser_idカラムを追加
+-- ⚠️ 実行前にバックアップ必須
 -- ========================================
 
--- 1. accounts テーブル
+-- pgcrypto拡張（gen_random_uuid用）
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- 1. accounts
 ALTER TABLE accounts
   ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- 2. categories テーブル（NULL許容 = 共有カテゴリ）
+CREATE INDEX idx_accounts_user_id ON accounts(user_id);
+
+-- 2. categories (NULL = 共有カテゴリ)
 ALTER TABLE categories
   ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- 3. counterparties テーブル
+CREATE INDEX idx_categories_user_id ON categories(user_id);
+
+-- 3. counterparties
 ALTER TABLE counterparties
   ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- 4. transactions テーブル
+CREATE INDEX idx_counterparties_user_id ON counterparties(user_id);
+
+-- 4. transactions
 ALTER TABLE transactions
   ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- 5. settlements テーブル
+CREATE INDEX idx_transactions_user_id ON transactions(user_id);
+
+-- 5. settlements
 ALTER TABLE settlements
   ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- 6. recurring_transactions テーブル
+CREATE INDEX idx_settlements_user_id ON settlements(user_id);
+
+-- 6. recurring_transactions
 ALTER TABLE recurring_transactions
   ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- 7. quick_entries テーブル
+CREATE INDEX idx_recurring_transactions_user_id ON recurring_transactions(user_id);
+
+-- 7. quick_entries
 ALTER TABLE quick_entries
   ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- 8. budgets テーブル
+CREATE INDEX idx_quick_entries_user_id ON quick_entries(user_id);
+
+-- 8. budgets (UNIQUE制約も修正)
 ALTER TABLE budgets
   ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- インデックス追加（パフォーマンス向上）
-CREATE INDEX idx_accounts_user_id ON accounts(user_id);
-CREATE INDEX idx_categories_user_id ON categories(user_id);
-CREATE INDEX idx_counterparties_user_id ON counterparties(user_id);
-CREATE INDEX idx_transactions_user_id ON transactions(user_id);
-CREATE INDEX idx_settlements_user_id ON settlements(user_id);
-CREATE INDEX idx_recurring_transactions_user_id ON recurring_transactions(user_id);
-CREATE INDEX idx_quick_entries_user_id ON quick_entries(user_id);
+-- 旧UNIQUE制約を削除（存在する場合）
+ALTER TABLE budgets DROP CONSTRAINT IF EXISTS budgets_category_id_key;
+
+-- 新UNIQUE制約（user_id + category_id）
+ALTER TABLE budgets ADD CONSTRAINT budgets_user_category_unique UNIQUE(user_id, category_id);
+
 CREATE INDEX idx_budgets_user_id ON budgets(user_id);
 ```
 
-## 3. RLSポリシー設計
-
-### 3.1 設計原則
-
-1. **最小権限の原則**: 自分のデータのみアクセス可能
-2. **明示的な操作分離**: SELECT/INSERT/UPDATE/DELETE を個別定義
-3. **auth.uid() 使用**: Supabase Auth のユーザーIDで制御
-4. **親子関係の考慮**: 子テーブルは親テーブル経由で制御
-
-### 3.2 accounts テーブル
+### 2.2 既存ポリシー削除
 
 ```sql
--- 既存ポリシーを削除
+-- ========================================
+-- Migration: 20250101000001_drop_allow_all_policies.sql
+-- 目的: 危険な USING(true) ポリシーを全削除
+-- ========================================
+
+-- accounts
 DROP POLICY IF EXISTS "Allow all access to accounts" ON accounts;
 
--- SELECT: 自分の口座のみ
-CREATE POLICY "Users can view own accounts"
+-- categories
+DROP POLICY IF EXISTS "Allow all access to categories" ON categories;
+
+-- counterparties
+DROP POLICY IF EXISTS "Allow all access to counterparties" ON counterparties;
+
+-- transactions
+DROP POLICY IF EXISTS "Allow all access to transactions" ON transactions;
+
+-- transaction_lines
+DROP POLICY IF EXISTS "Allow all access to transaction_lines" ON transaction_lines;
+
+-- settlements
+DROP POLICY IF EXISTS "Allow all access to settlements" ON settlements;
+
+-- recurring_transactions
+DROP POLICY IF EXISTS "Allow all access to recurring_transactions" ON recurring_transactions;
+
+-- recurring_transaction_lines
+DROP POLICY IF EXISTS "Allow all access to recurring_transaction_lines" ON recurring_transaction_lines;
+
+-- quick_entries
+DROP POLICY IF EXISTS "Allow all access to quick_entries" ON quick_entries;
+
+-- budgets
+DROP POLICY IF EXISTS "Allow all access to budgets" ON budgets;
+```
+
+### 2.3 新RLSポリシー（操作別・参照チェック付き）
+
+```sql
+-- ========================================
+-- Migration: 20250101000002_add_secure_rls_policies.sql
+-- 目的: 安全なRLSポリシーを設定
+-- ========================================
+
+-- =====================
+-- accounts
+-- =====================
+CREATE POLICY "accounts_select_own"
   ON accounts FOR SELECT
   USING (auth.uid() = user_id);
 
--- INSERT: 自分のuser_idでのみ作成可能
-CREATE POLICY "Users can create own accounts"
+CREATE POLICY "accounts_insert_own"
   ON accounts FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
--- UPDATE: 自分の口座のみ更新可能
-CREATE POLICY "Users can update own accounts"
+CREATE POLICY "accounts_update_own"
   ON accounts FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- DELETE: 自分の口座のみ削除可能
-CREATE POLICY "Users can delete own accounts"
+CREATE POLICY "accounts_delete_own"
   ON accounts FOR DELETE
   USING (auth.uid() = user_id);
-```
 
-### 3.3 categories テーブル (共有カテゴリ対応)
-
-```sql
-DROP POLICY IF EXISTS "Allow all access to categories" ON categories;
-
--- SELECT: 自分のカテゴリ + 共有カテゴリ (user_id = NULL)
-CREATE POLICY "Users can view own and shared categories"
+-- =====================
+-- categories (共有カテゴリ対応)
+-- =====================
+-- SELECT: 自分の + 共有(user_id IS NULL)
+CREATE POLICY "categories_select_own_and_shared"
   ON categories FOR SELECT
   USING (auth.uid() = user_id OR user_id IS NULL);
 
--- INSERT: 自分のカテゴリのみ作成可能
-CREATE POLICY "Users can create own categories"
+-- INSERT: 自分のみ（共有は管理者がservice_roleで作成）
+CREATE POLICY "categories_insert_own"
   ON categories FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
--- UPDATE: 自分のカテゴリのみ更新可能（共有は更新不可）
-CREATE POLICY "Users can update own categories"
+-- UPDATE: 自分のみ（共有は更新不可）
+CREATE POLICY "categories_update_own"
   ON categories FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- DELETE: 自分のカテゴリのみ削除可能
-CREATE POLICY "Users can delete own categories"
+-- DELETE: 自分のみ
+CREATE POLICY "categories_delete_own"
   ON categories FOR DELETE
   USING (auth.uid() = user_id);
-```
 
-### 3.4 transactions テーブル
-
-```sql
-DROP POLICY IF EXISTS "Allow all access to transactions" ON transactions;
-
-CREATE POLICY "Users can view own transactions"
-  ON transactions FOR SELECT
+-- =====================
+-- counterparties
+-- =====================
+CREATE POLICY "counterparties_select_own"
+  ON counterparties FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can create own transactions"
-  ON transactions FOR INSERT
+CREATE POLICY "counterparties_insert_own"
+  ON counterparties FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can update own transactions"
-  ON transactions FOR UPDATE
+CREATE POLICY "counterparties_update_own"
+  ON counterparties FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can delete own transactions"
+CREATE POLICY "counterparties_delete_own"
+  ON counterparties FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- =====================
+-- transactions (参照先所有権チェック付き)
+-- =====================
+CREATE POLICY "transactions_select_own"
+  ON transactions FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- INSERT: account_id, counterparty_id が自分のものか確認
+CREATE POLICY "transactions_insert_own_with_refs"
+  ON transactions FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM accounts
+      WHERE accounts.id = transactions.account_id
+      AND accounts.user_id = auth.uid()
+    )
+    AND (
+      transactions.counterparty_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM counterparties
+        WHERE counterparties.id = transactions.counterparty_id
+        AND counterparties.user_id = auth.uid()
+      )
+    )
+  );
+
+-- UPDATE: 同様に参照先もチェック
+CREATE POLICY "transactions_update_own_with_refs"
+  ON transactions FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM accounts
+      WHERE accounts.id = transactions.account_id
+      AND accounts.user_id = auth.uid()
+    )
+    AND (
+      transactions.counterparty_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM counterparties
+        WHERE counterparties.id = transactions.counterparty_id
+        AND counterparties.user_id = auth.uid()
+      )
+    )
+  );
+
+CREATE POLICY "transactions_delete_own"
   ON transactions FOR DELETE
   USING (auth.uid() = user_id);
-```
 
-### 3.5 transaction_lines テーブル (親テーブル参照)
-
-```sql
-DROP POLICY IF EXISTS "Allow all access to transaction_lines" ON transaction_lines;
-
--- SELECT: 親取引が自分のものであれば閲覧可能
-CREATE POLICY "Users can view lines of own transactions"
+-- =====================
+-- transaction_lines (親と参照先の所有権チェック)
+-- =====================
+-- SELECT: 親transactionが自分のもの
+CREATE POLICY "transaction_lines_select_via_parent"
   ON transaction_lines FOR SELECT
   USING (
     EXISTS (
@@ -224,8 +288,8 @@ CREATE POLICY "Users can view lines of own transactions"
     )
   );
 
--- INSERT: 親取引が自分のものであれば作成可能
-CREATE POLICY "Users can create lines for own transactions"
+-- INSERT: 親transaction + category が自分のもの（または共有カテゴリ）
+CREATE POLICY "transaction_lines_insert_with_refs"
   ON transaction_lines FOR INSERT
   WITH CHECK (
     EXISTS (
@@ -233,10 +297,18 @@ CREATE POLICY "Users can create lines for own transactions"
       WHERE transactions.id = transaction_lines.transaction_id
       AND transactions.user_id = auth.uid()
     )
+    AND (
+      transaction_lines.category_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM categories
+        WHERE categories.id = transaction_lines.category_id
+        AND (categories.user_id = auth.uid() OR categories.user_id IS NULL)
+      )
+    )
   );
 
--- UPDATE: 親取引が自分のものであれば更新可能
-CREATE POLICY "Users can update lines of own transactions"
+-- UPDATE: 同様
+CREATE POLICY "transaction_lines_update_with_refs"
   ON transaction_lines FOR UPDATE
   USING (
     EXISTS (
@@ -244,10 +316,24 @@ CREATE POLICY "Users can update lines of own transactions"
       WHERE transactions.id = transaction_lines.transaction_id
       AND transactions.user_id = auth.uid()
     )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM transactions
+      WHERE transactions.id = transaction_lines.transaction_id
+      AND transactions.user_id = auth.uid()
+    )
+    AND (
+      transaction_lines.category_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM categories
+        WHERE categories.id = transaction_lines.category_id
+        AND (categories.user_id = auth.uid() OR categories.user_id IS NULL)
+      )
+    )
   );
 
--- DELETE: 親取引が自分のものであれば削除可能
-CREATE POLICY "Users can delete lines of own transactions"
+CREATE POLICY "transaction_lines_delete_via_parent"
   ON transaction_lines FOR DELETE
   USING (
     EXISTS (
@@ -256,473 +342,406 @@ CREATE POLICY "Users can delete lines of own transactions"
       AND transactions.user_id = auth.uid()
     )
   );
-```
 
-### 3.6 その他のテーブル（標準パターン）
-
-以下のテーブルは accounts と同じパターンを適用:
-- `counterparties`
-- `settlements`
-- `recurring_transactions`
-- `quick_entries`
-- `budgets`
-
-`recurring_transaction_lines` は `transaction_lines` と同じ親参照パターンを適用。
-
-## 4. 完全なマイグレーションSQL
-
-```sql
--- ========================================
--- Migration: Implement RLS policies
--- ファイル: supabase/migrations/20250101000001_add_rls_policies.sql
--- ⚠️ user_idカラム追加後に実行すること
--- ========================================
-
--- ===================
--- accounts
--- ===================
-DROP POLICY IF EXISTS "Allow all access to accounts" ON accounts;
-
-CREATE POLICY "Users can view own accounts"
-  ON accounts FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can create own accounts"
-  ON accounts FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own accounts"
-  ON accounts FOR UPDATE
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own accounts"
-  ON accounts FOR DELETE USING (auth.uid() = user_id);
-
--- ===================
--- categories (共有対応)
--- ===================
-DROP POLICY IF EXISTS "Allow all access to categories" ON categories;
-
-CREATE POLICY "Users can view own and shared categories"
-  ON categories FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
-
-CREATE POLICY "Users can create own categories"
-  ON categories FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own categories"
-  ON categories FOR UPDATE
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own categories"
-  ON categories FOR DELETE USING (auth.uid() = user_id);
-
--- ===================
--- counterparties
--- ===================
-DROP POLICY IF EXISTS "Allow all access to counterparties" ON counterparties;
-
-CREATE POLICY "Users can view own counterparties"
-  ON counterparties FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can create own counterparties"
-  ON counterparties FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own counterparties"
-  ON counterparties FOR UPDATE
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own counterparties"
-  ON counterparties FOR DELETE USING (auth.uid() = user_id);
-
--- ===================
--- transactions
--- ===================
-DROP POLICY IF EXISTS "Allow all access to transactions" ON transactions;
-
-CREATE POLICY "Users can view own transactions"
-  ON transactions FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can create own transactions"
-  ON transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own transactions"
-  ON transactions FOR UPDATE
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own transactions"
-  ON transactions FOR DELETE USING (auth.uid() = user_id);
-
--- ===================
--- transaction_lines (親参照)
--- ===================
-DROP POLICY IF EXISTS "Allow all access to transaction_lines" ON transaction_lines;
-
-CREATE POLICY "Users can view lines of own transactions"
-  ON transaction_lines FOR SELECT
-  USING (EXISTS (
-    SELECT 1 FROM transactions
-    WHERE transactions.id = transaction_lines.transaction_id
-    AND transactions.user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can create lines for own transactions"
-  ON transaction_lines FOR INSERT
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM transactions
-    WHERE transactions.id = transaction_lines.transaction_id
-    AND transactions.user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can update lines of own transactions"
-  ON transaction_lines FOR UPDATE
-  USING (EXISTS (
-    SELECT 1 FROM transactions
-    WHERE transactions.id = transaction_lines.transaction_id
-    AND transactions.user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can delete lines of own transactions"
-  ON transaction_lines FOR DELETE
-  USING (EXISTS (
-    SELECT 1 FROM transactions
-    WHERE transactions.id = transaction_lines.transaction_id
-    AND transactions.user_id = auth.uid()
-  ));
-
--- ===================
+-- =====================
 -- settlements
--- ===================
-DROP POLICY IF EXISTS "Allow all access to settlements" ON settlements;
+-- =====================
+CREATE POLICY "settlements_select_own"
+  ON settlements FOR SELECT
+  USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can view own settlements"
-  ON settlements FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "settlements_insert_own"
+  ON settlements FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can create own settlements"
-  ON settlements FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own settlements"
+CREATE POLICY "settlements_update_own"
   ON settlements FOR UPDATE
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can delete own settlements"
-  ON settlements FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "settlements_delete_own"
+  ON settlements FOR DELETE
+  USING (auth.uid() = user_id);
 
--- ===================
--- recurring_transactions
--- ===================
-DROP POLICY IF EXISTS "Allow all access to recurring_transactions" ON recurring_transactions;
+-- =====================
+-- recurring_transactions (参照先チェック付き)
+-- =====================
+CREATE POLICY "recurring_transactions_select_own"
+  ON recurring_transactions FOR SELECT
+  USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can view own recurring_transactions"
-  ON recurring_transactions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "recurring_transactions_insert_own_with_refs"
+  ON recurring_transactions FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      recurring_transactions.account_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM accounts
+        WHERE accounts.id = recurring_transactions.account_id
+        AND accounts.user_id = auth.uid()
+      )
+    )
+  );
 
-CREATE POLICY "Users can create own recurring_transactions"
-  ON recurring_transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own recurring_transactions"
+CREATE POLICY "recurring_transactions_update_own_with_refs"
   ON recurring_transactions FOR UPDATE
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  USING (auth.uid() = user_id)
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      recurring_transactions.account_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM accounts
+        WHERE accounts.id = recurring_transactions.account_id
+        AND accounts.user_id = auth.uid()
+      )
+    )
+  );
 
-CREATE POLICY "Users can delete own recurring_transactions"
-  ON recurring_transactions FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "recurring_transactions_delete_own"
+  ON recurring_transactions FOR DELETE
+  USING (auth.uid() = user_id);
 
--- ===================
--- recurring_transaction_lines (親参照)
--- ===================
-DROP POLICY IF EXISTS "Allow all access to recurring_transaction_lines" ON recurring_transaction_lines;
-
-CREATE POLICY "Users can view own recurring_transaction_lines"
+-- =====================
+-- recurring_transaction_lines (親とcategory所有権チェック)
+-- =====================
+CREATE POLICY "recurring_transaction_lines_select_via_parent"
   ON recurring_transaction_lines FOR SELECT
-  USING (EXISTS (
-    SELECT 1 FROM recurring_transactions
-    WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
-    AND recurring_transactions.user_id = auth.uid()
-  ));
+  USING (
+    EXISTS (
+      SELECT 1 FROM recurring_transactions
+      WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
+      AND recurring_transactions.user_id = auth.uid()
+    )
+  );
 
-CREATE POLICY "Users can create own recurring_transaction_lines"
+CREATE POLICY "recurring_transaction_lines_insert_with_refs"
   ON recurring_transaction_lines FOR INSERT
-  WITH CHECK (EXISTS (
-    SELECT 1 FROM recurring_transactions
-    WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
-    AND recurring_transactions.user_id = auth.uid()
-  ));
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM recurring_transactions
+      WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
+      AND recurring_transactions.user_id = auth.uid()
+    )
+    AND (
+      recurring_transaction_lines.category_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM categories
+        WHERE categories.id = recurring_transaction_lines.category_id
+        AND (categories.user_id = auth.uid() OR categories.user_id IS NULL)
+      )
+    )
+  );
 
-CREATE POLICY "Users can update own recurring_transaction_lines"
+CREATE POLICY "recurring_transaction_lines_update_with_refs"
   ON recurring_transaction_lines FOR UPDATE
-  USING (EXISTS (
-    SELECT 1 FROM recurring_transactions
-    WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
-    AND recurring_transactions.user_id = auth.uid()
-  ));
+  USING (
+    EXISTS (
+      SELECT 1 FROM recurring_transactions
+      WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
+      AND recurring_transactions.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM recurring_transactions
+      WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
+      AND recurring_transactions.user_id = auth.uid()
+    )
+    AND (
+      recurring_transaction_lines.category_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM categories
+        WHERE categories.id = recurring_transaction_lines.category_id
+        AND (categories.user_id = auth.uid() OR categories.user_id IS NULL)
+      )
+    )
+  );
 
-CREATE POLICY "Users can delete own recurring_transaction_lines"
+CREATE POLICY "recurring_transaction_lines_delete_via_parent"
   ON recurring_transaction_lines FOR DELETE
-  USING (EXISTS (
-    SELECT 1 FROM recurring_transactions
-    WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
-    AND recurring_transactions.user_id = auth.uid()
-  ));
+  USING (
+    EXISTS (
+      SELECT 1 FROM recurring_transactions
+      WHERE recurring_transactions.id = recurring_transaction_lines.recurring_transaction_id
+      AND recurring_transactions.user_id = auth.uid()
+    )
+  );
 
--- ===================
--- quick_entries
--- ===================
-DROP POLICY IF EXISTS "Allow all access to quick_entries" ON quick_entries;
+-- =====================
+-- quick_entries (参照先チェック付き)
+-- =====================
+CREATE POLICY "quick_entries_select_own"
+  ON quick_entries FOR SELECT
+  USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can view own quick_entries"
-  ON quick_entries FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "quick_entries_insert_own_with_refs"
+  ON quick_entries FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      quick_entries.account_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM accounts
+        WHERE accounts.id = quick_entries.account_id
+        AND accounts.user_id = auth.uid()
+      )
+    )
+    AND (
+      quick_entries.category_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM categories
+        WHERE categories.id = quick_entries.category_id
+        AND (categories.user_id = auth.uid() OR categories.user_id IS NULL)
+      )
+    )
+  );
 
-CREATE POLICY "Users can create own quick_entries"
-  ON quick_entries FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own quick_entries"
+CREATE POLICY "quick_entries_update_own_with_refs"
   ON quick_entries FOR UPDATE
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  USING (auth.uid() = user_id)
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      quick_entries.account_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM accounts
+        WHERE accounts.id = quick_entries.account_id
+        AND accounts.user_id = auth.uid()
+      )
+    )
+    AND (
+      quick_entries.category_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM categories
+        WHERE categories.id = quick_entries.category_id
+        AND (categories.user_id = auth.uid() OR categories.user_id IS NULL)
+      )
+    )
+  );
 
-CREATE POLICY "Users can delete own quick_entries"
-  ON quick_entries FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "quick_entries_delete_own"
+  ON quick_entries FOR DELETE
+  USING (auth.uid() = user_id);
 
--- ===================
--- budgets
--- ===================
-DROP POLICY IF EXISTS "Allow all access to budgets" ON budgets;
+-- =====================
+-- budgets (参照先チェック付き)
+-- =====================
+CREATE POLICY "budgets_select_own"
+  ON budgets FOR SELECT
+  USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can view own budgets"
-  ON budgets FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "budgets_insert_own_with_refs"
+  ON budgets FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      budgets.category_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM categories
+        WHERE categories.id = budgets.category_id
+        AND (categories.user_id = auth.uid() OR categories.user_id IS NULL)
+      )
+    )
+  );
 
-CREATE POLICY "Users can create own budgets"
-  ON budgets FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own budgets"
+CREATE POLICY "budgets_update_own_with_refs"
   ON budgets FOR UPDATE
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  USING (auth.uid() = user_id)
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      budgets.category_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM categories
+        WHERE categories.id = budgets.category_id
+        AND (categories.user_id = auth.uid() OR categories.user_id IS NULL)
+      )
+    )
+  );
 
-CREATE POLICY "Users can delete own budgets"
-  ON budgets FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "budgets_delete_own"
+  ON budgets FOR DELETE
+  USING (auth.uid() = user_id);
 ```
 
-## 5. 共有カテゴリ（システムデフォルト）の扱い
+---
 
-### 5.1 設計方針
-
-- `categories.user_id = NULL` は共有（システムデフォルト）カテゴリ
-- 全ユーザーが閲覧可能、編集・削除は不可
-- 管理者のみが作成・編集可能（Supabase Dashboard or service_role key）
-
-### 5.2 初期共有カテゴリの例
+## 3. 既存データ移行
 
 ```sql
--- システムデフォルトカテゴリ (user_id = NULL)
-INSERT INTO categories (name, type, user_id) VALUES
-  ('給与', 'income', NULL),
-  ('副業', 'income', NULL),
-  ('食費', 'expense', NULL),
-  ('住居費', 'expense', NULL),
-  ('光熱費', 'expense', NULL),
-  ('通信費', 'expense', NULL),
-  ('交通費', 'expense', NULL),
-  ('娯楽費', 'expense', NULL),
-  ('資金移動', 'transfer', NULL);
+-- ========================================
+-- Migration: 20250101000003_migrate_existing_data.sql
+-- 目的: 既存データを特定ユーザーに紐付け
+-- ⚠️ YOUR-USER-ID を実際のUUIDに置き換えて実行
+-- ========================================
+
+DO $$
+DECLARE
+  owner_user_id UUID := 'YOUR-USER-ID-HERE';  -- ← Supabase Dashboard で確認
+BEGIN
+  -- 全テーブルのuser_idを設定
+  UPDATE accounts SET user_id = owner_user_id WHERE user_id IS NULL;
+  UPDATE categories SET user_id = owner_user_id WHERE user_id IS NULL;
+  UPDATE counterparties SET user_id = owner_user_id WHERE user_id IS NULL;
+  UPDATE transactions SET user_id = owner_user_id WHERE user_id IS NULL;
+  UPDATE settlements SET user_id = owner_user_id WHERE user_id IS NULL;
+  UPDATE recurring_transactions SET user_id = owner_user_id WHERE user_id IS NULL;
+  UPDATE quick_entries SET user_id = owner_user_id WHERE user_id IS NULL;
+  UPDATE budgets SET user_id = owner_user_id WHERE user_id IS NULL;
+
+  RAISE NOTICE 'Migrated all data to user: %', owner_user_id;
+END $$;
+
+-- NOT NULL制約を追加（categoriesは共有のためNULL許容のまま）
+ALTER TABLE accounts ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE counterparties ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE transactions ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE settlements ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE recurring_transactions ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE quick_entries ALTER COLUMN user_id SET NOT NULL;
+ALTER TABLE budgets ALTER COLUMN user_id SET NOT NULL;
 ```
 
-## 6. フロントエンド対応
+---
 
-### 6.1 Supabaseクライアント更新
+## 4. schema.sql の扱い
 
-**ファイル**: `src/lib/supabase.ts`
+### 方針: 開発用に限定、本番はmigrations only
 
-```typescript
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-// ブラウザ用クライアント（認証セッション付き）
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-  },
-});
+```sql
+-- schema.sql 冒頭に警告を追加
+-- ========================================
+-- ⚠️ WARNING: このファイルはローカル開発専用です
+-- 本番環境では supabase/migrations/ のみを使用してください
+--
+-- このファイルの USING(true) ポリシーは開発用です
+-- 本番では絶対に使用しないでください
+-- ========================================
 ```
 
-### 6.2 INSERT時のuser_id設定
+### 推奨: schema.sql の役割
 
-```typescript
-// Before (user_idなし)
-await supabase.from("transactions").insert({
-  date: accrualDate,
-  description,
-  account_id: accountId,
-  total_amount: totalAmount,
-});
+| 用途 | 可否 |
+|------|------|
+| ローカル開発の初期化 | OK |
+| 本番DBの構築 | **NG** |
+| テーブル構造の参照 | OK（ただしmigrationsが正） |
 
-// After (user_id追加)
-const { data: { user } } = await supabase.auth.getUser();
-if (!user) throw new Error("Not authenticated");
+---
 
-await supabase.from("transactions").insert({
-  user_id: user.id,  // ← 追加
-  date: accrualDate,
-  description,
-  account_id: accountId,
-  total_amount: totalAmount,
-});
+## 5. UUID関数の統一
+
+### 方針: `gen_random_uuid()` に統一
+
+```sql
+-- pgcrypto拡張を有効化（マイグレーション冒頭で）
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- 新規テーブル作成時
+CREATE TABLE example (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- ← これを使う
+  ...
+);
 ```
 
-### 6.3 型定義更新
+### 既存の uuid_generate_v4() を置き換える必要はない
+- 既存データには影響なし
+- 今後の新規テーブル・カラムで統一すればOK
 
-**ファイル**: `src/types/supabase.ts` の各テーブルに `user_id` を追加
+---
+
+## 6. 個人データの分離
+
+### 問題のマイグレーション
+
+```sql
+-- 20251225080000_add_current_balance.sql より
+UPDATE accounts SET current_balance = 409056 WHERE name = '三井住友';
+UPDATE accounts SET current_balance = 55331 WHERE name = '楽天銀行';
+```
+
+### 対策
+
+1. **seed.sql に移動** → 開発/デモ用データとして分離
+2. **本番では手動入力** → UIから設定
+
+```
+supabase/
+├── migrations/      # スキーマ変更のみ（データなし）
+├── seed.sql         # 開発用初期データ（本番では使わない）
+└── schema.sql       # 開発用（本番では使わない）
+```
+
+---
+
+## 7. SSR寄せのルール（再掲）
+
+| 操作 | 実装場所 | 理由 |
+|------|---------|------|
+| SELECT | クライアント直接OK | RLSで保護 |
+| INSERT | Route Handler推奨 | user_id自動付与、監査ログ |
+| UPDATE | Route Handler推奨 | 同上 |
+| DELETE | Route Handler推奨 | 同上 |
+| Pro機能 | **Route Handler必須** | フロント突破防止 |
+
+### Pro制限の実装場所
 
 ```typescript
-transactions: {
-  Row: {
-    id: string
-    user_id: string  // ← 追加
-    date: string
-    // ...
+// ❌ フロントだけ（突破される）
+if (!isPro) return <LockedUI />;
+
+// ✅ Route Handler で強制
+// src/app/api/transactions/route.ts
+export async function POST(request: Request) {
+  const user = await getUser();
+  const subscription = await getSubscription(user.id);
+
+  if (subscription.plan === 'free') {
+    const count = await getMonthlyTransactionCount(user.id);
+    if (count >= 50) {
+      return NextResponse.json(
+        { error: 'Free plan limit reached' },
+        { status: 403 }
+      );
+    }
   }
-  Insert: {
-    user_id: string  // ← 追加（必須）
-    // ...
-  }
+
+  // 実際の処理...
 }
 ```
 
-## 7. テスト手順
+---
 
-### 7.1 事前準備
+## 8. チェックリスト
 
-1. テスト用ユーザーを2つ作成
-   - User A: `test-a@example.com`
-   - User B: `test-b@example.com`
+### マイグレーション適用前
 
-2. 各ユーザーでログインしてデータを作成
+- [ ] バックアップ取得: `supabase db dump -f backup.sql`
+- [ ] ローカル環境でテスト完了
+- [ ] 自分のuser_id を取得済み
 
-### 7.2 テストケース
+### マイグレーション適用後
 
-| No | テスト内容 | 期待結果 |
-|----|-----------|---------|
-| 1 | User A でログインし、自分の取引を取得 | 自分の取引のみ返却 |
-| 2 | User A でログインし、User B の取引IDで直接アクセス | 空配列 or エラー |
-| 3 | 未ログイン状態でAPI呼び出し | 空配列（RLSでブロック） |
-| 4 | User A で共有カテゴリを取得 | 共有カテゴリが返却される |
-| 5 | User A で共有カテゴリを更新しようとする | エラー |
-| 6 | User A が User B の口座IDを指定して取引作成 | エラー（FK違反 or RLS違反） |
+- [ ] 全テーブルに user_id が存在
+- [ ] 全テーブルの USING(true) ポリシーが削除済み
+- [ ] 新ポリシーが正しく適用されている
+- [ ] 既存データに user_id が設定されている
+- [ ] budgets の UNIQUE制約が (user_id, category_id) になっている
 
-### 7.3 テストスクリプト例
+### 動作確認
 
-```typescript
-// tests/rls.test.ts
-import { createClient } from "@supabase/supabase-js";
+- [ ] 自分のデータが正常に表示される
+- [ ] 別ユーザーでログインすると空（データなし）
+- [ ] INSERT時に他人のaccount_idを指定するとエラー
+- [ ] INSERT時に他人のcategory_idを指定するとエラー
 
-const supabase = createClient(URL, ANON_KEY);
+---
 
-describe("RLS Tests", () => {
-  let userAToken: string;
-  let userBToken: string;
-  let userATransactionId: string;
+## 9. 次のステップ
 
-  beforeAll(async () => {
-    // User A でログイン
-    const { data: a } = await supabase.auth.signInWithPassword({
-      email: "test-a@example.com",
-      password: "password",
-    });
-    userAToken = a.session!.access_token;
-
-    // User B でログイン
-    const { data: b } = await supabase.auth.signInWithPassword({
-      email: "test-b@example.com",
-      password: "password",
-    });
-    userBToken = b.session!.access_token;
-  });
-
-  test("User A cannot see User B transactions", async () => {
-    // User A のセッションで User B の取引を取得しようとする
-    supabase.auth.setSession({ access_token: userAToken, refresh_token: "" });
-
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("*")
-      .eq("user_id", "USER_B_ID"); // User B のID
-
-    expect(data).toHaveLength(0);
-  });
-
-  test("Unauthenticated request returns empty", async () => {
-    // セッションをクリア
-    await supabase.auth.signOut();
-
-    const { data } = await supabase.from("transactions").select("*");
-    expect(data).toHaveLength(0);
-  });
-});
-```
-
-## 8. anon key をフロントで使う安全条件
-
-### 8.1 必須条件
-
-| 条件 | 説明 |
-|------|------|
-| RLS有効化 | 全テーブルで `ALTER TABLE xxx ENABLE ROW LEVEL SECURITY;` |
-| 適切なポリシー | `USING (true)` を禁止し、`auth.uid()` ベースに |
-| 認証必須 | 未認証では何もできない状態に |
-
-### 8.2 anon key vs service_role key
-
-| キー | 用途 | RLS適用 |
-|------|------|---------|
-| `anon key` | フロントエンド | **適用される** |
-| `service_role key` | サーバーサイドのみ | **バイパス** |
-
-**重要**: `service_role key` は絶対にフロントエンドに公開しない
-
-### 8.3 チェックリスト
-
-- [ ] 全テーブルでRLSが有効になっている
-- [ ] `USING (true)` のポリシーがない
-- [ ] 全INSERTで `user_id = auth.uid()` を強制
-- [ ] service_role key がフロントエンドにない
-- [ ] 環境変数が `NEXT_PUBLIC_` で始まるのは anon key のみ
-
-## 9. 注意事項と落とし穴
-
-### 9.1 パフォーマンス
-
-- `EXISTS` サブクエリは適切なインデックスがないと遅くなる
-- `transaction_lines` の親参照ポリシーは `transaction_id` にインデックス必須
-
-### 9.2 デバッグ
-
-```sql
--- RLSポリシーの確認
-SELECT schemaname, tablename, policyname, permissive, roles, cmd, qual, with_check
-FROM pg_policies
-WHERE schemaname = 'public';
-```
-
-### 9.3 よくあるミス
-
-1. **INSERT時にuser_idを忘れる** → RLSでブロックされる
-2. **JOINでRLSが適用されない** → 明示的にWHERE条件を追加
-3. **CASCADE DELETE** → 親削除時に子もRLSチェックを通過
-
-### 9.4 ロールバック手順
-
-問題発生時の緊急復旧:
-
-```sql
--- 一時的に全アクセスを許可（本番では非推奨）
-CREATE POLICY "Emergency all access"
-  ON transactions FOR ALL
-  USING (true)
-  WITH CHECK (true);
-```
-
-## 10. 次のステップ
-
-1. `docs/product/multi-tenant-and-auth.md` で認証フロー設計
-2. マイグレーション実行計画
-3. 既存データの user_id 紐付け
-4. フロントエンド対応
+1. 認証実装（`docs/product/multi-tenant-and-auth.md` 参照）
+2. マイグレーションファイル作成
+3. ローカルテスト
+4. 本番適用
