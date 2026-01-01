@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Account = Tables<"accounts">;
 
@@ -49,6 +50,7 @@ const ownerTypes = [
 
 export default function AccountsSettingsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -82,6 +84,7 @@ export default function AccountsSettingsPage() {
 
     setIsSaving(true);
     await supabase.from("accounts").insert({
+      user_id: user?.id,
       name: newName.trim(),
       type: newType,
       owner: newOwner,

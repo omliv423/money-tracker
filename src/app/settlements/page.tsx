@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 
@@ -68,6 +69,7 @@ interface Settlement {
 }
 
 export default function SettlementsPage() {
+  const { user } = useAuth();
   const [balances, setBalances] = useState<CounterpartyBalance[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -231,6 +233,7 @@ export default function SettlementsPage() {
       // 新規作成モード
       // 精算を記録
       await supabase.from("settlements").insert({
+        user_id: user?.id,
         date: settlementDate,
         counterparty: selectedCounterparty,
         amount: signedAmount,

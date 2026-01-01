@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { format, addDays, lastDayOfMonth, setDate } from "date-fns";
 
 type RecurringTransaction = {
@@ -24,6 +25,7 @@ type RecurringTransaction = {
 };
 
 export function RecurringTransactionsCard() {
+  const { user } = useAuth();
   const [items, setItems] = useState<RecurringTransaction[]>([]);
   const [registeredThisMonth, setRegisteredThisMonth] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -111,6 +113,7 @@ export function RecurringTransactionsCard() {
     const { data: tx, error: txError } = await supabase
       .from("transactions")
       .insert({
+        user_id: user?.id,
         date: format(accrualDate, "yyyy-MM-dd"),
         payment_date: paymentDate ? format(paymentDate, "yyyy-MM-dd") : null,
         description: item.description || item.name,

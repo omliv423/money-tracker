@@ -24,11 +24,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Counterparty = Tables<"counterparties">;
 
 export default function CounterpartiesSettingsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -60,6 +62,7 @@ export default function CounterpartiesSettingsPage() {
 
     setIsSaving(true);
     await supabase.from("counterparties").insert({
+      user_id: user?.id,
       name: newName.trim(),
     });
 

@@ -8,6 +8,7 @@ import { ArrowLeft, PiggyBank, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 type Category = Tables<"categories">;
@@ -21,6 +22,7 @@ type CategoryWithBudget = {
 
 export default function BudgetsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [items, setItems] = useState<CategoryWithBudget[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -118,6 +120,7 @@ export default function BudgetsPage() {
     } else {
       // Create budget
       await supabase.from("budgets").insert({
+        user_id: user?.id,
         category_id: categoryId,
         monthly_amount: amount,
       });

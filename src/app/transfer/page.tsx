@@ -16,10 +16,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Account = Tables<"accounts">;
 
 export default function TransferPage() {
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -90,6 +92,7 @@ export default function TransferPage() {
       const { data: outTx, error: outError } = await supabase
         .from("transactions")
         .insert({
+          user_id: user?.id,
           date: transferDate,
           payment_date: transferDate,
           description: desc,
@@ -131,6 +134,7 @@ export default function TransferPage() {
       const { data: inTx, error: inError } = await supabase
         .from("transactions")
         .insert({
+          user_id: user?.id,
           date: transferDate,
           payment_date: transferDate,
           description: desc,

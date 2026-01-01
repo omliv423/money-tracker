@@ -24,6 +24,7 @@ export type Database = {
           name: string
           owner: string
           type: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -34,6 +35,7 @@ export type Database = {
           name: string
           owner?: string
           type: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -44,6 +46,7 @@ export type Database = {
           name?: string
           owner?: string
           type?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -55,6 +58,7 @@ export type Database = {
           name: string
           parent_id: string | null
           type: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -63,6 +67,7 @@ export type Database = {
           name: string
           parent_id?: string | null
           type: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -71,6 +76,7 @@ export type Database = {
           name?: string
           parent_id?: string | null
           type?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -88,18 +94,21 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
           id?: string
           is_active?: boolean | null
           name: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
           id?: string
           is_active?: boolean | null
           name?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -114,6 +123,7 @@ export type Database = {
           payment_delay_days: number
           is_active: boolean
           created_at: string
+          user_id: string | null
         }
         Insert: {
           id?: string
@@ -125,6 +135,7 @@ export type Database = {
           payment_delay_days?: number
           is_active?: boolean
           created_at?: string
+          user_id?: string | null
         }
         Update: {
           id?: string
@@ -136,6 +147,7 @@ export type Database = {
           payment_delay_days?: number
           is_active?: boolean
           created_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -204,6 +216,7 @@ export type Database = {
           is_active: boolean
           use_count: number
           created_at: string
+          user_id: string | null
         }
         Insert: {
           id?: string
@@ -216,6 +229,7 @@ export type Database = {
           is_active?: boolean
           use_count?: number
           created_at?: string
+          user_id?: string | null
         }
         Update: {
           id?: string
@@ -228,6 +242,7 @@ export type Database = {
           is_active?: boolean
           use_count?: number
           created_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -253,6 +268,7 @@ export type Database = {
           monthly_amount: number
           is_active: boolean
           created_at: string
+          user_id: string | null
         }
         Insert: {
           id?: string
@@ -260,6 +276,7 @@ export type Database = {
           monthly_amount: number
           is_active?: boolean
           created_at?: string
+          user_id?: string | null
         }
         Update: {
           id?: string
@@ -267,6 +284,7 @@ export type Database = {
           monthly_amount?: number
           is_active?: boolean
           created_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -286,6 +304,7 @@ export type Database = {
           date: string
           id: string
           note: string | null
+          user_id: string | null
         }
         Insert: {
           amount: number
@@ -294,6 +313,7 @@ export type Database = {
           date?: string
           id?: string
           note?: string | null
+          user_id?: string | null
         }
         Update: {
           amount?: number
@@ -302,8 +322,77 @@ export type Database = {
           date?: string
           id?: string
           note?: string | null
+          user_id?: string | null
         }
         Relationships: []
+      }
+      households: {
+        Row: {
+          id: string
+          name: string
+          owner_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name?: string
+          owner_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          owner_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      household_members: {
+        Row: {
+          id: string
+          household_id: string
+          user_id: string | null
+          role: string
+          invited_email: string | null
+          invite_token: string | null
+          invited_at: string
+          joined_at: string | null
+          status: string
+        }
+        Insert: {
+          id?: string
+          household_id: string
+          user_id?: string | null
+          role?: string
+          invited_email?: string | null
+          invite_token?: string | null
+          invited_at?: string
+          joined_at?: string | null
+          status?: string
+        }
+        Update: {
+          id?: string
+          household_id?: string
+          user_id?: string | null
+          role?: string
+          invited_email?: string | null
+          invite_token?: string | null
+          invited_at?: string
+          joined_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "household_members_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       transaction_lines: {
         Row: {
@@ -380,6 +469,7 @@ export type Database = {
           payment_date: string | null
           settled_amount: number | null
           total_amount: number
+          user_id: string | null
         }
         Insert: {
           account_id: string
@@ -392,6 +482,7 @@ export type Database = {
           payment_date?: string | null
           settled_amount?: number | null
           total_amount: number
+          user_id?: string | null
         }
         Update: {
           account_id?: string
@@ -404,6 +495,7 @@ export type Database = {
           payment_date?: string | null
           settled_amount?: number | null
           total_amount?: number
+          user_id?: string | null
         }
         Relationships: [
           {

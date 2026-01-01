@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { format } from "date-fns";
 
 type QuickEntry = Tables<"quick_entries"> & {
@@ -20,6 +21,7 @@ type QuickEntry = Tables<"quick_entries"> & {
 };
 
 export function QuickEntryButtons() {
+  const { user } = useAuth();
   const [items, setItems] = useState<QuickEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -64,6 +66,7 @@ export function QuickEntryButtons() {
     const { data: tx, error: txError } = await supabase
       .from("transactions")
       .insert({
+        user_id: user?.id,
         date: today,
         payment_date: today,
         description: selectedEntry.description || selectedEntry.name,

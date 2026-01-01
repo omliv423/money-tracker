@@ -27,6 +27,7 @@ import {
 import { AmountInput } from "./AmountInput";
 import { TransactionLineItem, type LineItemData } from "./TransactionLineItem";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Account = Tables<"accounts">;
 type Category = Tables<"categories">;
@@ -37,6 +38,7 @@ function generateId() {
 }
 
 export function TransactionForm() {
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
@@ -272,6 +274,7 @@ export function TransactionForm() {
       const { data: transaction, error: transactionError } = await supabase
         .from("transactions")
         .insert({
+          user_id: user?.id,
           date: accrualDate, // 発生日
           payment_date: paymentDate, // 支払日/入金日
           description,

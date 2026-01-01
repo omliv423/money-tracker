@@ -465,12 +465,12 @@ function TransactionsContent() {
                         <motion.div
                           key={tx.id}
                           layout
-                          className="bg-card rounded-xl border border-border overflow-hidden"
+                          className="bg-card rounded-xl border border-border overflow-hidden hover:bg-accent transition-colors"
                         >
                           <div className="flex items-center">
                             <Link
                               href={`/transactions/${tx.id}`}
-                              className="flex-1 p-4 hover:bg-accent transition-colors"
+                              className="flex-1 p-4"
                             >
                               <div className="flex justify-between items-start">
                                 <div className="space-y-1">

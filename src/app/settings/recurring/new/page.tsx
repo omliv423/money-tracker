@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Account = Tables<"accounts">;
 type Category = Tables<"categories">;
@@ -33,6 +34,7 @@ function generateId() {
 
 export default function NewRecurringTransactionPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,6 +104,7 @@ export default function NewRecurringTransactionPage() {
     const { data: recurring, error: recurringError } = await supabase
       .from("recurring_transactions")
       .insert({
+        user_id: user?.id,
         name: name.trim(),
         description: description.trim() || null,
         account_id: accountId || null,

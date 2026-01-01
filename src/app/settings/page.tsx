@@ -1,8 +1,18 @@
+"use client";
+
 import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Wallet, Tag, Database, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank } from "lucide-react";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { Button } from "@/components/ui/button";
+import { Wallet, Tag, Database, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users } from "lucide-react";
 
 const settingsItems = [
+  {
+    title: "パートナー共有",
+    description: "パートナーと家計を共有",
+    icon: Users,
+    href: "/settings/household",
+  },
   {
     title: "入出金消し込み",
     description: "入金・引き落とし済みを記録",
@@ -60,10 +70,41 @@ const settingsItems = [
 ];
 
 export default function SettingsPage() {
+  const { user, signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+  };
+
   return (
     <MainLayout>
       <div className="space-y-6">
         <h1 className="font-heading text-2xl font-bold">設定</h1>
+
+        {/* User Profile */}
+        {user && (
+          <div className="bg-card rounded-xl p-4 border border-border flex items-center gap-4">
+            {user.user_metadata?.avatar_url ? (
+              <img
+                src={user.user_metadata.avatar_url}
+                alt="avatar"
+                className="w-12 h-12 rounded-full"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold">
+                {user.email?.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">
+                {user.user_metadata?.full_name || user.email}
+              </p>
+              <p className="text-sm text-muted-foreground truncate">
+                {user.email}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2">
           {settingsItems.map((item) => {
@@ -88,6 +129,16 @@ export default function SettingsPage() {
             );
           })}
         </div>
+
+        {/* Logout */}
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={handleLogout}
+        >
+          <LogOut className="w-4 h-4 mr-2" />
+          ログアウト
+        </Button>
 
         {/* App Info */}
         <div className="mt-8 text-center text-sm text-muted-foreground">

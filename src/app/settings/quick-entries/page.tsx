@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type QuickEntry = Tables<"quick_entries"> & {
   account?: { name: string } | null;
@@ -41,6 +42,7 @@ type Category = Tables<"categories">;
 
 export default function QuickEntriesPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [items, setItems] = useState<QuickEntry[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -126,7 +128,7 @@ export default function QuickEntriesPage() {
     if (editingId) {
       await supabase.from("quick_entries").update(data).eq("id", editingId);
     } else {
-      await supabase.from("quick_entries").insert(data);
+      await supabase.from("quick_entries").insert({ ...data, user_id: user?.id });
     }
 
     setIsSaving(false);

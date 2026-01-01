@@ -1,13 +1,14 @@
-// Re-export from the new client module for backwards compatibility
-// TODO: Migrate all imports to use @/lib/supabase/client directly
-import { createClient } from "@/lib/supabase/client";
+import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/supabase";
 
-// Create a singleton instance for backwards compatibility
-// Note: This should be migrated to use createClient() per-request
-export const supabase = createClient();
+export function createClient() {
+  return createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
-// Re-export helper types
+// Helper types
 export type Tables<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
 export type InsertTables<T extends keyof Database["public"]["Tables"]> =

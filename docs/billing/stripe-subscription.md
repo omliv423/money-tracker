@@ -12,20 +12,57 @@
 | **Free** | ¥0 | ¥0 | 基本機能（制限あり） |
 | **Pro** | ¥500 | ¥5,000 | 全機能（制限なし） |
 
-### 1.2 機能制限の案
+### 1.2 機能制限
 
 | 機能 | Free | Pro |
 |------|------|-----|
 | 取引登録 | 月50件まで | 無制限 |
 | 口座数 | 3口座まで | 無制限 |
-| レポート期間 | 過去3ヶ月 | 全期間 |
+| レポート期間 | 過去12ヶ月 | 全期間 |
 | 定期取引 | 3件まで | 無制限 |
 | クイック入力 | 3件まで | 無制限 |
-| 予算管理 | ❌ | ✅ |
-| CSVエクスポート | ❌ | ✅ |
-| ダークモード | ✅ | ✅ |
+| 予算管理 | 3カテゴリまで | 無制限 |
+| **パートナー共有** | ❌ | ✅（1名まで） |
+| CSVエクスポート | ✅ | ✅ |
+| Excelエクスポート | ❌ | ✅ |
 
-### 1.3 将来の拡張案
+### 1.3 パートナー共有機能（Pro限定）
+
+Proユーザーはパートナー1名を招待し、同じ家計データを共有できます。
+
+**できること**:
+- 同じ取引データの閲覧・登録・編集
+- 共有口座の管理
+- レポートの共有閲覧
+- それぞれのデバイスからアクセス
+
+**仕組み**:
+```
+┌─────────────────────────────────────────────────────────┐
+│ Household（家計グループ）                                │
+│                                                         │
+│  ┌─────────────┐         ┌─────────────┐              │
+│  │ Owner (Pro) │ ──────→ │ Partner     │              │
+│  │ 小笠原      │  招待    │ あさみ       │              │
+│  └─────────────┘         └─────────────┘              │
+│         │                       │                      │
+│         └───────────┬───────────┘                      │
+│                     ▼                                   │
+│              ┌─────────────┐                           │
+│              │ 共有データ   │                           │
+│              │ - 取引       │                           │
+│              │ - 口座       │                           │
+│              │ - カテゴリ   │                           │
+│              └─────────────┘                           │
+└─────────────────────────────────────────────────────────┘
+```
+
+**注意点**:
+- Proを解約すると共有は解除される（パートナーはアクセス不可に）
+- パートナーは無料で利用可能（Proユーザーの枠内）
+- オーナーのみがパートナーを招待/削除可能
+
+### 1.4 将来の拡張案
 
 | プラン | 月額 | 対象 |
 |--------|------|------|
@@ -106,7 +143,114 @@ CREATE POLICY "Users can view own subscription"
 -- UPDATEもサーバーサイドのみ
 ```
 
-### 3.2 新規ユーザー時の初期化
+### 3.2 households テーブル（パートナー共有用）
+
+```sql
+-- 家計グループ（1つのProアカウントにつき1つ）
+CREATE TABLE households (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL DEFAULT '我が家の家計',
+  owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(owner_id)  -- 1ユーザー1グループのみ
+);
+
+-- 家計グループのメンバー
+CREATE TABLE household_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member',  -- 'owner' | 'member'
+  invited_at TIMESTAMPTZ DEFAULT now(),
+  joined_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'active' | 'removed'
+  UNIQUE(household_id, user_id)
+);
+
+-- インデックス
+CREATE INDEX idx_households_owner ON households(owner_id);
+CREATE INDEX idx_household_members_user ON household_members(user_id);
+CREATE INDEX idx_household_members_household ON household_members(household_id);
+
+-- RLSポリシー
+ALTER TABLE households ENABLE ROW LEVEL SECURITY;
+ALTER TABLE household_members ENABLE ROW LEVEL SECURITY;
+
+-- households: オーナーまたはアクティブメンバーが閲覧可能
+CREATE POLICY "Household visible to members"
+  ON households FOR SELECT
+  USING (
+    owner_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM household_members
+      WHERE household_members.household_id = households.id
+      AND household_members.user_id = auth.uid()
+      AND household_members.status = 'active'
+    )
+  );
+
+-- households: オーナーのみ作成・更新・削除可能
+CREATE POLICY "Owner can manage household"
+  ON households FOR ALL
+  USING (owner_id = auth.uid())
+  WITH CHECK (owner_id = auth.uid());
+
+-- household_members: メンバーは自分の参加情報を閲覧可能
+CREATE POLICY "Members can view membership"
+  ON household_members FOR SELECT
+  USING (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM households
+      WHERE households.id = household_members.household_id
+      AND households.owner_id = auth.uid()
+    )
+  );
+```
+
+### 3.3 データアクセスの変更（household対応）
+
+パートナー共有を実現するため、既存テーブルのRLSポリシーを拡張します。
+
+```sql
+-- 例: transactions テーブル
+-- 従来: auth.uid() = user_id のみ
+-- 変更後: 自分のデータ OR 同じhouseholdのデータ
+
+CREATE OR REPLACE FUNCTION get_household_id(uid UUID)
+RETURNS UUID AS $$
+  SELECT COALESCE(
+    -- オーナーとして所有するhousehold
+    (SELECT id FROM households WHERE owner_id = uid),
+    -- メンバーとして参加しているhousehold
+    (SELECT household_id FROM household_members
+     WHERE user_id = uid AND status = 'active')
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- transactions の新しいRLSポリシー
+CREATE POLICY "Users can access own or household transactions"
+  ON transactions FOR ALL
+  USING (
+    -- 自分のデータ
+    user_id = auth.uid()
+    -- または同じhouseholdのデータ（Proのみ）
+    OR (
+      get_household_id(auth.uid()) IS NOT NULL
+      AND get_household_id(user_id) = get_household_id(auth.uid())
+    )
+  )
+  WITH CHECK (
+    user_id = auth.uid()
+    OR (
+      get_household_id(auth.uid()) IS NOT NULL
+      AND get_household_id(user_id) = get_household_id(auth.uid())
+    )
+  );
+```
+
+### 3.4 新規ユーザー時の初期化
 
 ```sql
 -- 新規ユーザー登録時にFreeプランのsubscription作成

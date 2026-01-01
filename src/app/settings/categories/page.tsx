@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Category = Tables<"categories">;
 
@@ -45,6 +46,7 @@ const categoryTypes = [
 
 export default function CategoriesSettingsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -79,6 +81,7 @@ export default function CategoriesSettingsPage() {
 
     setIsSaving(true);
     await supabase.from("categories").insert({
+      user_id: user?.id,
       name: newName.trim(),
       type: newType,
       parent_id: newParentId,
