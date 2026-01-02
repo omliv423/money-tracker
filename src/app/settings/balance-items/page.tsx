@@ -91,6 +91,7 @@ export default function BalanceItemsPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<BalanceItem[]>([]);
   const [cashBalances, setCashBalances] = useState<CashBalance[]>([]);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [payables, setPayables] = useState<PayableBalance[]>([]);
   const [receivables, setReceivables] = useState<CounterpartyBalance[]>([]);
   const [borrowings, setBorrowings] = useState<CounterpartyBalance[]>([]);
@@ -136,6 +137,7 @@ export default function BalanceItemsPage() {
       .eq("is_active", true);
 
     if (accounts) {
+      setAllAccounts(accounts);
       const cashList = accounts
         .filter((acc) => acc.opening_balance && acc.opening_balance !== 0)
         .map((acc) => ({
@@ -298,6 +300,12 @@ export default function BalanceItemsPage() {
       const amount = parseInt(counterpartyAmount);
       const date = counterpartyDate || new Date().toISOString().split("T")[0];
 
+      // 最初の口座を使用（期首残高調整用なので任意の口座でOK）
+      const defaultAccountId = allAccounts[0]?.id;
+      if (!defaultAccountId) {
+        throw new Error("口座が登録されていません");
+      }
+
       // 取引を作成
       const { data: tx, error: txError } = await supabase
         .from("transactions")
@@ -308,6 +316,7 @@ export default function BalanceItemsPage() {
             ? `${counterpartyName}からの借入金（期首残高）`
             : `${counterpartyName}への立替金（期首残高）`,
           total_amount: amount,
+          account_id: defaultAccountId,
           is_cash_settled: false,
         })
         .select()

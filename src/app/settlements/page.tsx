@@ -185,26 +185,38 @@ export default function SettlementsPage() {
       setBalances(balanceList.sort((a, b) => b.totalAmount - a.totalAmount));
     }
 
-    // 精算履歴を取得（内訳を含む）
+    // 精算履歴を取得
     const { data: settlementData } = await supabase
       .from("settlements")
-      .select(`
-        *,
-        settlement_items(
-          id,
-          amount,
-          transaction_line:transaction_lines(
-            id,
-            amount,
-            transaction:transactions(date, description)
-          )
-        )
-      `)
+      .select("*")
       .order("date", { ascending: false })
       .limit(20);
 
     if (settlementData) {
-      setSettlements(settlementData as Settlement[]);
+      // 各精算の内訳を個別に取得
+      // 注: settlement_itemsはまだSupabase型定義に含まれていないためanyを使用
+      const settlementsWithItems: Settlement[] = await Promise.all(
+        settlementData.map(async (settlement) => {
+          const { data: items } = await (supabase as any)
+            .from("settlement_items")
+            .select(`
+              id,
+              amount,
+              transaction_line:transaction_lines(
+                id,
+                amount,
+                transaction:transactions(date, description)
+              )
+            `)
+            .eq("settlement_id", settlement.id);
+
+          return {
+            ...settlement,
+            settlement_items: (items || []) as SettlementItem[],
+          };
+        })
+      );
+      setSettlements(settlementsWithItems);
     }
 
     setIsLoading(false);
@@ -329,7 +341,7 @@ export default function SettlementsPage() {
 
         // 精算内訳をまとめてinsert
         if (settlementItems.length > 0) {
-          await supabase.from("settlement_items").insert(settlementItems);
+          await (supabase as any).from("settlement_items").insert(settlementItems);
         }
       }
 
