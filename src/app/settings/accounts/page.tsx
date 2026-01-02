@@ -55,12 +55,22 @@ export default function AccountsSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editAccount, setEditAccount] = useState<Account | null>(null);
 
   // Form state
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("bank");
   const [newOwner, setNewOwner] = useState("self");
+  const [newOpeningBalance, setNewOpeningBalance] = useState("");
+  const [newBalanceDate, setNewBalanceDate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  // Edit form state
+  const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState("");
+  const [editOwner, setEditOwner] = useState("");
+  const [editOpeningBalance, setEditOpeningBalance] = useState("");
+  const [editBalanceDate, setEditBalanceDate] = useState("");
 
   const fetchAccounts = async () => {
     setIsLoading(true);
@@ -88,12 +98,45 @@ export default function AccountsSettingsPage() {
       name: newName.trim(),
       type: newType,
       owner: newOwner,
+      opening_balance: newOpeningBalance ? parseInt(newOpeningBalance) : 0,
+      balance_date: newBalanceDate || null,
     });
 
     setNewName("");
     setNewType("bank");
     setNewOwner("self");
+    setNewOpeningBalance("");
+    setNewBalanceDate("");
     setShowAddDialog(false);
+    setIsSaving(false);
+    fetchAccounts();
+  };
+
+  const handleEdit = (account: Account) => {
+    setEditAccount(account);
+    setEditName(account.name);
+    setEditType(account.type);
+    setEditOwner(account.owner);
+    setEditOpeningBalance(account.opening_balance?.toString() || "0");
+    setEditBalanceDate(account.balance_date || "");
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editAccount || !editName.trim()) return;
+
+    setIsSaving(true);
+    await supabase
+      .from("accounts")
+      .update({
+        name: editName.trim(),
+        type: editType,
+        owner: editOwner,
+        opening_balance: editOpeningBalance ? parseInt(editOpeningBalance) : 0,
+        balance_date: editBalanceDate || null,
+      })
+      .eq("id", editAccount.id);
+
+    setEditAccount(null);
     setIsSaving(false);
     fetchAccounts();
   };
@@ -157,9 +200,10 @@ export default function AccountsSettingsPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.03 }}
-                className={`bg-card rounded-xl p-4 border border-border ${
+                className={`bg-card rounded-xl p-4 border border-border hover:bg-accent transition-colors cursor-pointer ${
                   !account.is_active ? "opacity-50" : ""
                 }`}
+                onClick={() => handleEdit(account)}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -178,9 +222,19 @@ export default function AccountsSettingsPage() {
                           <span className="text-primary">(共同)</span>
                         )}
                       </div>
+                      {account.opening_balance !== 0 && (
+                        <p className="text-xs text-income mt-1">
+                          残高: ¥{account.opening_balance?.toLocaleString("ja-JP")}
+                          {account.balance_date && (
+                            <span className="text-muted-foreground ml-1">
+                              ({account.balance_date})
+                            </span>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleToggleActive(account)}
                       className={`px-3 py-1 text-xs rounded-full transition-colors ${
@@ -250,12 +304,105 @@ export default function AccountsSettingsPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">初期残高（任意）</label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={newOpeningBalance}
+                onChange={(e) => setNewOpeningBalance(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">残高基準日（任意）</label>
+              <Input
+                type="date"
+                value={newBalanceDate}
+                onChange={(e) => setNewBalanceDate(e.target.value)}
+              />
+            </div>
             <Button
               onClick={handleAdd}
               disabled={!newName.trim() || isSaving}
               className="w-full"
             >
               {isSaving ? "保存中..." : "追加する"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editAccount} onOpenChange={() => setEditAccount(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>口座を編集</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">名前</label>
+              <Input
+                placeholder="例: 楽天銀行"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">種類</label>
+              <Select value={editType} onValueChange={setEditType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {accountTypes.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">所有者</label>
+              <Select value={editOwner} onValueChange={setEditOwner}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ownerTypes.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">初期残高</label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={editOpeningBalance}
+                onChange={(e) => setEditOpeningBalance(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                BSの現預金に表示されます
+              </p>
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">残高基準日</label>
+              <Input
+                type="date"
+                value={editBalanceDate}
+                onChange={(e) => setEditBalanceDate(e.target.value)}
+              />
+            </div>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={!editName.trim() || isSaving}
+              className="w-full"
+            >
+              {isSaving ? "保存中..." : "保存する"}
             </Button>
           </div>
         </DialogContent>

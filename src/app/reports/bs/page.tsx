@@ -90,13 +90,13 @@ export default function BSReportPage() {
       if (accountData) {
         setAccounts(accountData);
 
-        // 現預金（current_balance が設定されている口座）
+        // 現預金（opening_balance が設定されている口座）
         const cashList: CashBalance[] = accountData
-          .filter((acc) => acc.current_balance !== null && acc.current_balance !== 0)
+          .filter((acc) => acc.opening_balance !== null && acc.opening_balance !== 0)
           .map((acc) => ({
             accountId: acc.id,
             accountName: acc.name,
-            balance: acc.current_balance || 0,
+            balance: acc.opening_balance || 0,
             type: acc.type,
           }))
           .sort((a, b) => b.balance - a.balance);

@@ -25,6 +25,8 @@ export type Database = {
           owner: string
           type: string
           user_id: string | null
+          opening_balance: number
+          balance_date: string | null
         }
         Insert: {
           created_at?: string
@@ -36,6 +38,8 @@ export type Database = {
           owner?: string
           type: string
           user_id?: string | null
+          opening_balance?: number
+          balance_date?: string | null
         }
         Update: {
           created_at?: string
@@ -47,6 +51,8 @@ export type Database = {
           owner?: string
           type?: string
           user_id?: string | null
+          opening_balance?: number
+          balance_date?: string | null
         }
         Relationships: []
       }
