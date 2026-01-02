@@ -226,11 +226,13 @@ export default function CategoriesSettingsPage() {
           </Button>
         </div>
 
-        {/* Income Categories */}
-        {renderCategoryList(incomeCategories, "収入カテゴリ", "text-income")}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Income Categories */}
+          {renderCategoryList(incomeCategories, "収入カテゴリ", "text-income")}
 
-        {/* Expense Categories */}
-        {renderCategoryList(expenseCategories, "支出カテゴリ", "text-expense")}
+          {/* Expense Categories */}
+          {renderCategoryList(expenseCategories, "支出カテゴリ", "text-expense")}
+        </div>
       </div>
 
       {/* Add Dialog */}

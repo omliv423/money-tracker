@@ -381,7 +381,7 @@ export default function HouseholdSettingsPage() {
 
         {/* Has household */}
         {household && (
-          <>
+          <div className="space-y-6 lg:grid lg:grid-cols-[1.2fr_0.8fr] lg:gap-6 lg:space-y-0">
             {/* Household info */}
             <div className="bg-card rounded-xl p-4 border border-border">
               <div className="flex items-center justify-between mb-4">
@@ -488,7 +488,7 @@ export default function HouseholdSettingsPage() {
             </div>
 
             {/* Info box */}
-            <div className="bg-secondary/30 rounded-xl p-4 text-sm text-muted-foreground">
+            <div className="bg-secondary/30 rounded-xl p-4 text-sm text-muted-foreground lg:sticky lg:top-24 lg:self-start">
               <p className="font-medium text-foreground mb-2">共有されるデータ</p>
               <ul className="list-disc list-inside space-y-1">
                 <li>口座・残高</li>
@@ -497,7 +497,7 @@ export default function HouseholdSettingsPage() {
                 <li>定期取引・クイック入力</li>
               </ul>
             </div>
-          </>
+          </div>
         )}
       </div>
 

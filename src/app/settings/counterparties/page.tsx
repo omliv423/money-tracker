@@ -133,7 +133,7 @@ export default function CounterpartiesSettingsPage() {
             <p className="text-sm mt-1">よく利用する店舗やサービスを登録しましょう</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid gap-3 md:grid-cols-2">
             <AnimatePresence>
               {counterparties.map((counterparty, index) => (
                 <motion.div

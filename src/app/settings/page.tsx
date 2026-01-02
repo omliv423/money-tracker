@@ -106,7 +106,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {settingsItems.map((item) => {
             const Icon = item.icon;
             return (

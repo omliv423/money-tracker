@@ -164,7 +164,7 @@ export default function BudgetsPage() {
         </p>
 
         {/* Categories List */}
-        <div className="space-y-2">
+        <div className="grid gap-3 md:grid-cols-2">
           <AnimatePresence>
             {items.map((item, index) => {
               const { category, budget, currentSpending } = item;

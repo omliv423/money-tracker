@@ -149,7 +149,7 @@ export default function AccountsSettingsPage() {
         </div>
 
         {/* Accounts List */}
-        <div className="space-y-2">
+        <div className="grid gap-3 md:grid-cols-2">
           <AnimatePresence>
             {accounts.map((account, index) => (
               <motion.div

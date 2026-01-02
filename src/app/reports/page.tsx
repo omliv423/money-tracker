@@ -84,70 +84,74 @@ export default function ReportsPage() {
       <div className="space-y-6">
         <h1 className="font-heading text-2xl font-bold">レポート</h1>
 
-        <div className="grid gap-4">
-          {reportCards.map((card, index) => {
-            const Icon = card.icon;
-            return (
-              <motion.div
-                key={card.href}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Link
-                  href={card.href}
-                  className="block bg-card rounded-xl p-5 border border-border hover:bg-accent transition-colors group"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-lg bg-secondary ${card.color}`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    <div className="flex-1">
-                      <h2 className="font-heading font-semibold">{card.title}</h2>
-                      <p className="text-sm text-muted-foreground">
-                        {card.description}
-                      </p>
-                    </div>
-                    <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-                  </div>
-                </Link>
-              </motion.div>
-            );
-          })}
-        </div>
+        <div className="lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-6">
+            <div className="grid gap-4">
+              {reportCards.map((card, index) => {
+                const Icon = card.icon;
+                return (
+                  <motion.div
+                    key={card.href}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <Link
+                      href={card.href}
+                      className="block bg-card rounded-xl p-5 border border-border hover:bg-accent transition-colors group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-lg bg-secondary ${card.color}`}>
+                          <Icon className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1">
+                          <h2 className="font-heading font-semibold">{card.title}</h2>
+                          <p className="text-sm text-muted-foreground">
+                            {card.description}
+                          </p>
+                        </div>
+                        <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                      </div>
+                    </Link>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 gap-4 mt-8">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-card rounded-xl p-4 border border-border"
-          >
-            <p className="text-sm text-muted-foreground">今月の収入</p>
-            {isLoading ? (
-              <div className="h-8 w-24 bg-muted rounded animate-pulse mt-1" />
-            ) : (
-              <p className="font-heading text-2xl font-bold text-income tabular-nums">
-                ¥{monthlyIncome.toLocaleString("ja-JP")}
-              </p>
-            )}
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-            className="bg-card rounded-xl p-4 border border-border"
-          >
-            <p className="text-sm text-muted-foreground">今月の支出</p>
-            {isLoading ? (
-              <div className="h-8 w-24 bg-muted rounded animate-pulse mt-1" />
-            ) : (
-              <p className="font-heading text-2xl font-bold text-expense tabular-nums">
-                ¥{monthlyExpense.toLocaleString("ja-JP")}
-              </p>
-            )}
-          </motion.div>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-1 lg:content-start lg:gap-5">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-card rounded-xl p-4 border border-border"
+            >
+              <p className="text-sm text-muted-foreground">今月の収入</p>
+              {isLoading ? (
+                <div className="h-8 w-24 bg-muted rounded animate-pulse mt-1" />
+              ) : (
+                <p className="font-heading text-2xl font-bold text-income tabular-nums">
+                  ¥{monthlyIncome.toLocaleString("ja-JP")}
+                </p>
+              )}
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+              className="bg-card rounded-xl p-4 border border-border"
+            >
+              <p className="text-sm text-muted-foreground">今月の支出</p>
+              {isLoading ? (
+                <div className="h-8 w-24 bg-muted rounded animate-pulse mt-1" />
+              ) : (
+                <p className="font-heading text-2xl font-bold text-expense tabular-nums">
+                  ¥{monthlyExpense.toLocaleString("ja-JP")}
+                </p>
+              )}
+            </motion.div>
+          </div>
         </div>
       </div>
     </MainLayout>

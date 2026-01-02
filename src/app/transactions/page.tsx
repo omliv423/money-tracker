@@ -244,103 +244,83 @@ function TransactionsContent() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="font-heading text-2xl font-bold">取引一覧</h1>
-          <Button
-            variant={showFilters ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowFilters(!showFilters)}
-            className="gap-2"
-          >
-            <Filter className="w-4 h-4" />
-            {hasActiveFilters && <span className="w-2 h-2 bg-primary rounded-full" />}
-          </Button>
-        </div>
-
-        {/* Filter Panel */}
-        <AnimatePresence>
-          {showFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-card rounded-xl border border-border overflow-hidden"
-            >
-              <div className="p-4 space-y-4">
-                {/* Date Range */}
-                <div>
-                  <label className="text-xs text-muted-foreground mb-2 block">期間</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="date"
-                      value={filters.dateFrom}
-                      onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                      className="flex-1 text-sm"
-                    />
-                    <span className="text-muted-foreground text-sm">〜</span>
-                    <Input
-                      type="date"
-                      value={filters.dateTo}
-                      onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                      className="flex-1 text-sm"
-                    />
-                  </div>
+      {(() => {
+        const filterPanel = (
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <div className="p-4 space-y-4">
+              {/* Date Range */}
+              <div>
+                <label className="text-xs text-muted-foreground mb-2 block">期間</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                    className="flex-1 text-sm"
+                  />
+                  <span className="text-muted-foreground text-sm">〜</span>
+                  <Input
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                    className="flex-1 text-sm"
+                  />
                 </div>
+              </div>
 
-                {/* Transaction Type Filter */}
-                <div>
-                  <label className="text-xs text-muted-foreground mb-2 block">種別</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { value: "all", label: "すべて" },
-                      { value: "income", label: "収入" },
-                      { value: "expense", label: "支出" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setFilters({ ...filters, transactionType: opt.value })}
-                        className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                          filters.transactionType === opt.value
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary hover:bg-accent"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Account Filter */}
-                <div>
-                  <label className="text-xs text-muted-foreground mb-2 block">口座</label>
-                  <div className="flex flex-wrap gap-2">
+              {/* Transaction Type Filter */}
+              <div>
+                <label className="text-xs text-muted-foreground mb-2 block">種別</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: "all", label: "すべて" },
+                    { value: "income", label: "収入" },
+                    { value: "expense", label: "支出" },
+                  ].map((opt) => (
                     <button
-                      onClick={() => setFilters({ ...filters, accountId: "all" })}
-                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                        filters.accountId === "all"
+                      key={opt.value}
+                      onClick={() => setFilters({ ...filters, transactionType: opt.value })}
+                      className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                        filters.transactionType === opt.value
                           ? "bg-primary text-primary-foreground"
                           : "bg-secondary hover:bg-accent"
                       }`}
                     >
-                      すべて
+                      {opt.label}
                     </button>
-                    {accounts.map((acc) => (
-                      <button
-                        key={acc.id}
-                        onClick={() => setFilters({ ...filters, accountId: acc.id })}
-                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                          filters.accountId === acc.id
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary hover:bg-accent"
-                        }`}
-                      >
-                        {acc.name}
-                      </button>
-                    ))}
-                  </div>
+                  ))}
                 </div>
+              </div>
+
+              {/* Account Filter */}
+              <div>
+                <label className="text-xs text-muted-foreground mb-2 block">口座</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setFilters({ ...filters, accountId: "all" })}
+                    className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      filters.accountId === "all"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary hover:bg-accent"
+                    }`}
+                  >
+                    すべて
+                  </button>
+                  {accounts.map((acc) => (
+                    <button
+                      key={acc.id}
+                      onClick={() => setFilters({ ...filters, accountId: acc.id })}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                        filters.accountId === acc.id
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary hover:bg-accent"
+                      }`}
+                    >
+                      {acc.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
                 {/* Category Filter - Chip style grouped by parent */}
                 <div>
@@ -359,151 +339,201 @@ function TransactionsContent() {
                     </button>
 
                     {/* 親カテゴリでグループ化 */}
-                    {categories
-                      .filter((cat) => cat.parent_id === null)
-                      .map((parent) => {
-                        const children = categories.filter((c) => c.parent_id === parent.id);
+                    <div className="space-y-4">
+                      {categories
+                        .filter((cat) => cat.parent_id === null)
+                        .map((parent) => {
+                          const children = categories.filter((c) => c.parent_id === parent.id);
                         if (children.length === 0) {
                           // 子なし親カテゴリ
                           return (
-                            <button
-                              key={parent.id}
-                              onClick={() => setFilters({ ...filters, categoryId: parent.id })}
-                              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                                filters.categoryId === parent.id
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-secondary hover:bg-accent"
-                              }`}
-                            >
-                              {parent.name}
-                            </button>
-                          );
-                        }
-                        // 子ありの場合
-                        return (
-                          <div key={parent.id}>
-                            <p className="text-xs text-muted-foreground mb-1.5">{parent.name}</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {children.map((child) => (
+                            <div key={parent.id}>
+                              <p className="text-xs text-muted-foreground mb-2">{parent.name}</p>
+                              <div className="grid grid-cols-2 gap-2">
                                 <button
-                                  key={child.id}
-                                  onClick={() => setFilters({ ...filters, categoryId: child.id })}
-                                  className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
-                                    filters.categoryId === child.id
+                                  onClick={() => setFilters({ ...filters, categoryId: parent.id })}
+                                  className={`px-2.5 py-1.5 rounded-md text-xs text-left transition-colors ${
+                                    filters.categoryId === parent.id
                                       ? "bg-primary text-primary-foreground"
                                       : "bg-secondary hover:bg-accent"
                                   }`}
                                 >
-                                  {child.name}
+                                  すべて
                                 </button>
-                              ))}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        }
+                          // 子ありの場合
+                          return (
+                            <div key={parent.id}>
+                              <p className="text-xs text-muted-foreground mb-2">{parent.name}</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {children.map((child) => (
+                                  <button
+                                    key={child.id}
+                                    onClick={() => setFilters({ ...filters, categoryId: child.id })}
+                                    className={`px-2.5 py-1.5 rounded-md text-xs text-left transition-colors ${
+                                      filters.categoryId === child.id
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-secondary hover:bg-accent"
+                                    }`}
+                                  >
+                                    {child.name}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
                   </div>
                 </div>
 
-                {/* Clear Filters */}
-                {hasActiveFilters && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="w-full text-muted-foreground"
-                  >
-                    <X className="w-4 h-4 mr-2" />
-                    フィルターをクリア
-                  </Button>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Results count */}
-        <div className="text-sm text-muted-foreground">
-          {groupedTransactions.reduce((sum, g) => sum + g.transactions.length, 0)}件の取引
-        </div>
-
-        {groupedTransactions.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <p>取引がありません</p>
-            <p className="text-sm mt-2">記録画面から取引を追加してください</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <AnimatePresence>
-              {groupedTransactions.map((group, groupIndex) => (
-                <motion.div
-                  key={group.date}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: groupIndex * 0.05 }}
+              {/* Clear Filters */}
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="w-full text-muted-foreground"
                 >
-                  {/* Date Header */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm font-medium text-muted-foreground">
-                      {format(new Date(group.date), "yyyy年M月d日(E)", { locale: ja })}
-                    </span>
+                  <X className="w-4 h-4 mr-2" />
+                  フィルターをクリア
+                </Button>
+              )}
+            </div>
+          </div>
+        );
+
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h1 className="font-heading text-2xl font-bold">取引一覧</h1>
+              <Button
+                variant={showFilters ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                className="gap-2 md:hidden"
+              >
+                <Filter className="w-4 h-4" />
+                {hasActiveFilters && <span className="w-2 h-2 bg-primary rounded-full" />}
+              </Button>
+            </div>
+
+            <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:space-y-0">
+              <div className="hidden lg:block lg:sticky lg:top-24 lg:self-start">
+                <div className="mb-3 text-sm font-medium text-muted-foreground">
+                  フィルター
+                </div>
+                <div className="max-h-[calc(100vh-8rem)] overflow-y-auto pr-1">
+                  {filterPanel}
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {/* Filter Panel (Mobile) */}
+                <div className="md:hidden">
+                  <AnimatePresence>
+                    {showFilters && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                      >
+                        {filterPanel}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Results count */}
+                <div className="text-sm text-muted-foreground">
+                  {groupedTransactions.reduce((sum, g) => sum + g.transactions.length, 0)}件の取引
+                </div>
+
+                {groupedTransactions.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <p>取引がありません</p>
+                    <p className="text-sm mt-2">記録画面から取引を追加してください</p>
                   </div>
-
-                  {/* Transactions */}
-                  <div className="space-y-2">
-                    {group.transactions.map((tx) => {
-                      // Calculate if this is primarily income or expense
-                      const incomeTotal = tx.transaction_lines
-                        ?.filter((l) => l.line_type === "income")
-                        .reduce((sum, l) => sum + l.amount, 0) || 0;
-                      const expenseTotal = tx.transaction_lines
-                        ?.filter((l) => l.line_type !== "income")
-                        .reduce((sum, l) => sum + l.amount, 0) || 0;
-                      const isIncome = incomeTotal > expenseTotal;
-
-                      return (
+                ) : (
+                  <div className="space-y-6">
+                    <AnimatePresence>
+                      {groupedTransactions.map((group, groupIndex) => (
                         <motion.div
-                          key={tx.id}
-                          layout
-                          className="bg-card rounded-xl border border-border overflow-hidden hover:bg-accent transition-colors"
+                          key={group.date}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: groupIndex * 0.05 }}
                         >
-                          <div className="flex items-center">
-                            <Link
-                              href={`/transactions/${tx.id}`}
-                              className="flex-1 p-4"
-                            >
-                              <div className="flex justify-between items-start">
-                                <div className="space-y-1">
-                                  <p className="font-medium">{tx.description}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {tx.account?.name || "不明"}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`font-heading font-bold tabular-nums ${isIncome ? "text-income" : "text-expense"}`}>
-                                    {isIncome ? "+" : "-"}¥{tx.total_amount.toLocaleString("ja-JP")}
-                                  </span>
-                                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                                </div>
-                              </div>
-                            </Link>
-                            <button
-                              onClick={() => setDeleteId(tx.id)}
-                              className="p-4 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                          {/* Date Header */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <Calendar className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-sm font-medium text-muted-foreground">
+                              {format(new Date(group.date), "yyyy年M月d日(E)", { locale: ja })}
+                            </span>
+                          </div>
+
+                          {/* Transactions */}
+                          <div className="space-y-2">
+                            {group.transactions.map((tx) => {
+                              // Calculate if this is primarily income or expense
+                              const incomeTotal = tx.transaction_lines
+                                ?.filter((l) => l.line_type === "income")
+                                .reduce((sum, l) => sum + l.amount, 0) || 0;
+                              const expenseTotal = tx.transaction_lines
+                                ?.filter((l) => l.line_type !== "income")
+                                .reduce((sum, l) => sum + l.amount, 0) || 0;
+                              const isIncome = incomeTotal > expenseTotal;
+
+                              return (
+                                <motion.div
+                                  key={tx.id}
+                                  layout
+                                  className="bg-card rounded-xl border border-border overflow-hidden hover:bg-accent transition-colors"
+                                >
+                                  <div className="flex items-center">
+                                    <Link
+                                      href={`/transactions/${tx.id}`}
+                                      className="flex-1 p-4"
+                                    >
+                                      <div className="flex justify-between items-start">
+                                        <div className="space-y-1">
+                                          <p className="font-medium">{tx.description}</p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {tx.account?.name || "不明"}
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className={`font-heading font-bold tabular-nums ${isIncome ? "text-income" : "text-expense"}`}>
+                                            {isIncome ? "+" : "-"}¥{tx.total_amount.toLocaleString("ja-JP")}
+                                          </span>
+                                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                        </div>
+                                      </div>
+                                    </Link>
+                                    <button
+                                      onClick={() => setDeleteId(tx.id)}
+                                      className="p-4 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
                           </div>
                         </motion.div>
-                      );
-                    })}
+                      ))}
+                    </AnimatePresence>
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                )}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>

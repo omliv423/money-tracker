@@ -340,184 +340,190 @@ export default function SettlementsPage() {
       <div className="space-y-6">
         <h1 className="font-heading text-2xl font-bold">立替・精算</h1>
 
-        {/* Outstanding balances */}
-        <div className="bg-card rounded-xl p-5 border border-border">
-          <h2 className="font-medium text-sm text-muted-foreground mb-4">
-            未精算の立替
-          </h2>
+        <div className="space-y-6 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-6">
+            {/* Outstanding balances */}
+            <div className="bg-card rounded-xl p-5 border border-border">
+              <h2 className="font-medium text-sm text-muted-foreground mb-4">
+                未精算の立替
+              </h2>
 
-          {balances.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">
-              未精算の立替はありません
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <AnimatePresence>
-                {balances.map((balance) => {
-                  const isExpanded = expandedCounterparty === balance.counterparty;
-                  return (
-                    <motion.div
-                      key={balance.counterparty}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-secondary/30 rounded-lg overflow-hidden"
-                    >
-                      {/* Header row */}
-                      <div className="flex items-center justify-between p-3">
-                        <button
-                          onClick={() => setExpandedCounterparty(isExpanded ? null : balance.counterparty)}
-                          className="flex items-center gap-3 flex-1"
+              {balances.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4">
+                  未精算の立替はありません
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <AnimatePresence>
+                    {balances.map((balance) => {
+                      const isExpanded = expandedCounterparty === balance.counterparty;
+                      return (
+                        <motion.div
+                          key={balance.counterparty}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="bg-secondary/30 rounded-lg overflow-hidden"
                         >
-                          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                            <Users className="w-5 h-5 text-muted-foreground" />
+                          {/* Header row */}
+                          <div className="flex items-center justify-between p-3">
+                            <button
+                              onClick={() => setExpandedCounterparty(isExpanded ? null : balance.counterparty)}
+                              className="flex items-center gap-3 flex-1"
+                            >
+                              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+                                <Users className="w-5 h-5 text-muted-foreground" />
+                              </div>
+                              <div className="text-left">
+                                <p className="font-medium">{balance.counterparty}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {balance.count}件の未精算
+                                </p>
+                              </div>
+                              {isExpanded ? (
+                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleOpenSettlement(
+                                balance.totalAmount > 0 ? "receive" : "pay",
+                                balance.counterparty,
+                                balance.totalAmount
+                              )}
+                              className="flex items-center gap-2 hover:opacity-70 transition-opacity ml-2"
+                            >
+                              {balance.totalAmount > 0 ? (
+                                <ArrowUpRight className="w-4 h-4 text-income" />
+                              ) : (
+                                <ArrowDownLeft className="w-4 h-4 text-expense" />
+                              )}
+                              <span className={`font-heading font-bold tabular-nums ${
+                                balance.totalAmount > 0 ? "text-income" : "text-expense"
+                              }`}>
+                                ¥{Math.abs(balance.totalAmount).toLocaleString("ja-JP")}
+                              </span>
+                            </button>
                           </div>
-                          <div className="text-left">
-                            <p className="font-medium">{balance.counterparty}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {balance.count}件の未精算
-                            </p>
-                          </div>
-                          {isExpanded ? (
-                            <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                          )}
+
+                          {/* Expanded details */}
+                          <AnimatePresence>
+                            {isExpanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="border-t border-border"
+                              >
+                                <div className="p-3 space-y-2">
+                                  {balance.lines.map((line) => (
+                                    <div
+                                      key={line.id}
+                                      className="flex items-center justify-between text-sm py-1"
+                                    >
+                                      <div className="flex-1 min-w-0">
+                                        <p className="truncate">{line.description}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {line.date}
+                                          {line.settledAmount > 0 && (
+                                            <span className="ml-2">
+                                              (一部精算済: ¥{line.settledAmount.toLocaleString()})
+                                            </span>
+                                          )}
+                                        </p>
+                                      </div>
+                                      <span className="font-mono text-right ml-2">
+                                        ¥{line.unsettledAmount.toLocaleString()}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
+
+            {/* Settlement history */}
+            <div>
+              <h2 className="font-medium text-sm text-muted-foreground mb-3">
+                精算履歴
+              </h2>
+              {settlements.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>精算履歴がありません</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {settlements.map((settlement) => (
+                    <div
+                      key={settlement.id}
+                      className="bg-card rounded-xl p-4 border border-border flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="font-medium">{settlement.counterparty}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(settlement.date), "yyyy/M/d", { locale: ja })}
+                          {settlement.note && ` - ${settlement.note}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`font-heading font-bold tabular-nums ${
+                          settlement.amount > 0 ? "text-income" : "text-expense"
+                        }`}>
+                          {settlement.amount > 0 ? "+" : ""}¥{Math.abs(settlement.amount).toLocaleString("ja-JP")}
+                        </span>
+                        <button
+                          onClick={() => handleEditSettlement(settlement)}
+                          className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                        >
+                          <Pencil className="w-4 h-4 text-muted-foreground" />
                         </button>
                         <button
-                          onClick={() => handleOpenSettlement(
-                            balance.totalAmount > 0 ? "receive" : "pay",
-                            balance.counterparty,
-                            balance.totalAmount
-                          )}
-                          className="flex items-center gap-2 hover:opacity-70 transition-opacity ml-2"
+                          onClick={() => setDeleteId(settlement.id)}
+                          className="p-1.5 hover:bg-secondary rounded-md transition-colors"
                         >
-                          {balance.totalAmount > 0 ? (
-                            <ArrowUpRight className="w-4 h-4 text-income" />
-                          ) : (
-                            <ArrowDownLeft className="w-4 h-4 text-expense" />
-                          )}
-                          <span className={`font-heading font-bold tabular-nums ${
-                            balance.totalAmount > 0 ? "text-income" : "text-expense"
-                          }`}>
-                            ¥{Math.abs(balance.totalAmount).toLocaleString("ja-JP")}
-                          </span>
+                          <Trash2 className="w-4 h-4 text-muted-foreground" />
                         </button>
                       </div>
-
-                      {/* Expanded details */}
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="border-t border-border"
-                          >
-                            <div className="p-3 space-y-2">
-                              {balance.lines.map((line) => (
-                                <div
-                                  key={line.id}
-                                  className="flex items-center justify-between text-sm py-1"
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <p className="truncate">{line.description}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {line.date}
-                                      {line.settledAmount > 0 && (
-                                        <span className="ml-2">
-                                          (一部精算済: ¥{line.settledAmount.toLocaleString()})
-                                        </span>
-                                      )}
-                                    </p>
-                                  </div>
-                                  <span className="font-mono text-right ml-2">
-                                    ¥{line.unsettledAmount.toLocaleString()}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-          )}
-        </div>
-
-        {/* Quick actions */}
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => handleOpenSettlement("receive")}
-            className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
-          >
-            <ArrowUpRight className="w-5 h-5 text-income mb-2" />
-            <p className="font-medium">精算を記録</p>
-            <p className="text-xs text-muted-foreground">
-              お金を受け取った
-            </p>
-          </button>
-          <button
-            onClick={() => handleOpenSettlement("pay")}
-            className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
-          >
-            <ArrowDownLeft className="w-5 h-5 text-expense mb-2" />
-            <p className="font-medium">返済を記録</p>
-            <p className="text-xs text-muted-foreground">
-              お金を返した
-            </p>
-          </button>
-        </div>
-
-        {/* Settlement history */}
-        <div>
-          <h2 className="font-medium text-sm text-muted-foreground mb-3">
-            精算履歴
-          </h2>
-          {settlements.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>精算履歴がありません</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {settlements.map((settlement) => (
-                <div
-                  key={settlement.id}
-                  className="bg-card rounded-xl p-4 border border-border flex items-center justify-between"
-                >
-                  <div>
-                    <p className="font-medium">{settlement.counterparty}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {format(new Date(settlement.date), "yyyy/M/d", { locale: ja })}
-                      {settlement.note && ` - ${settlement.note}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`font-heading font-bold tabular-nums ${
-                      settlement.amount > 0 ? "text-income" : "text-expense"
-                    }`}>
-                      {settlement.amount > 0 ? "+" : ""}¥{Math.abs(settlement.amount).toLocaleString("ja-JP")}
-                    </span>
-                    <button
-                      onClick={() => handleEditSettlement(settlement)}
-                      className="p-1.5 hover:bg-secondary rounded-md transition-colors"
-                    >
-                      <Pencil className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(settlement.id)}
-                      className="p-1.5 hover:bg-secondary rounded-md transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Quick actions */}
+          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-1">
+              <button
+                onClick={() => handleOpenSettlement("receive")}
+                className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
+              >
+                <ArrowUpRight className="w-5 h-5 text-income mb-2" />
+                <p className="font-medium">精算を記録</p>
+                <p className="text-xs text-muted-foreground">
+                  お金を受け取った
+                </p>
+              </button>
+              <button
+                onClick={() => handleOpenSettlement("pay")}
+                className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
+              >
+                <ArrowDownLeft className="w-5 h-5 text-expense mb-2" />
+                <p className="font-medium">返済を記録</p>
+                <p className="text-xs text-muted-foreground">
+                  お金を返した
+                </p>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

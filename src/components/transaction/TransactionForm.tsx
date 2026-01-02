@@ -407,7 +407,8 @@ export function TransactionForm() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-4">
             {/* Amount Display */}
             <div
               onClick={handleBack}
@@ -535,7 +536,9 @@ export function TransactionForm() {
                 </Select>
               </div>
             )}
+          </div>
 
+          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
             {/* Lines */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -589,7 +592,8 @@ export function TransactionForm() {
               )}
             </Button>
           </div>
-        )}
+        </div>
+      )}
 
       {/* Confirmation Dialog */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>

@@ -355,209 +355,211 @@ export default function CashSettlementsPage() {
           </p>
         </div>
 
-        {/* Tab */}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => {
-              setActiveTab("payable");
-              setSelectedTransactions(new Set());
-            }}
-            className={`p-3 rounded-xl border transition-colors flex items-center justify-center gap-2 ${
-              activeTab === "payable"
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card border-border hover:bg-accent"
-            }`}
-          >
-            <ArrowDownLeft className="w-4 h-4" />
-            <div className="text-left">
-              <p className="text-sm font-medium">未払金</p>
-              <p className={`text-xs ${activeTab === "payable" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                ¥{totalPayables.toLocaleString("ja-JP")}
-              </p>
+        <div className="space-y-6 lg:grid lg:grid-cols-[1.2fr_0.8fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-6">
+            {/* Tab */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  setActiveTab("payable");
+                  setSelectedTransactions(new Set());
+                }}
+                className={`p-3 rounded-xl border transition-colors flex items-center justify-center gap-2 ${
+                  activeTab === "payable"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card border-border hover:bg-accent"
+                }`}
+              >
+                <ArrowDownLeft className="w-4 h-4" />
+                <div className="text-left">
+                  <p className="text-sm font-medium">未払金</p>
+                  <p className={`text-xs ${activeTab === "payable" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                    ¥{totalPayables.toLocaleString("ja-JP")}
+                  </p>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("receivable");
+                  setSelectedTransactions(new Set());
+                }}
+                className={`p-3 rounded-xl border transition-colors flex items-center justify-center gap-2 ${
+                  activeTab === "receivable"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card border-border hover:bg-accent"
+                }`}
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                <div className="text-left">
+                  <p className="text-sm font-medium">未収金</p>
+                  <p className={`text-xs ${activeTab === "receivable" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                    ¥{totalReceivables.toLocaleString("ja-JP")}
+                  </p>
+                </div>
+              </button>
             </div>
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab("receivable");
-              setSelectedTransactions(new Set());
-            }}
-            className={`p-3 rounded-xl border transition-colors flex items-center justify-center gap-2 ${
-              activeTab === "receivable"
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card border-border hover:bg-accent"
-            }`}
-          >
-            <ArrowUpRight className="w-4 h-4" />
-            <div className="text-left">
-              <p className="text-sm font-medium">未収金</p>
-              <p className={`text-xs ${activeTab === "receivable" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                ¥{totalReceivables.toLocaleString("ja-JP")}
-              </p>
-            </div>
-          </button>
-        </div>
 
-        {filteredGroups.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            {activeTab === "payable" ? (
-              <>
-                <CreditCard className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>未払いの取引はありません</p>
-              </>
+            {filteredGroups.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                {activeTab === "payable" ? (
+                  <>
+                    <CreditCard className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>未払いの取引はありません</p>
+                  </>
+                ) : (
+                  <>
+                    <Wallet className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>未収の取引はありません</p>
+                  </>
+                )}
+              </div>
             ) : (
               <>
-                <Wallet className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>未収の取引はありません</p>
-              </>
-            )}
-          </div>
-        ) : (
-          <>
-            {/* Accounts with transactions */}
-            <div className="space-y-3">
-              {filteredGroups.map((group, index) => {
-                const groupKey = `${group.type}-${group.accountId}`;
-                const isExpanded = expandedAccounts.has(groupKey);
-                const selectedCount = group.transactions.filter(
-                  (tx) => selectedTransactions.has(tx.id)
-                ).length;
+                {/* Accounts with transactions */}
+                <div className="space-y-3">
+                  {filteredGroups.map((group, index) => {
+                    const groupKey = `${group.type}-${group.accountId}`;
+                    const isExpanded = expandedAccounts.has(groupKey);
+                    const selectedCount = group.transactions.filter(
+                      (tx) => selectedTransactions.has(tx.id)
+                    ).length;
 
-                return (
-                  <motion.div
-                    key={groupKey}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="bg-card rounded-xl border border-border overflow-hidden"
-                  >
-                    {/* Account Header */}
-                    <button
-                      onClick={() => toggleAccountExpand(groupKey)}
-                      className="w-full p-4 flex justify-between items-center hover:bg-accent transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        {group.type === "payable" ? (
-                          <CreditCard className="w-5 h-5 text-muted-foreground" />
-                        ) : (
-                          <Wallet className="w-5 h-5 text-muted-foreground" />
-                        )}
-                        <div className="text-left">
-                          <p className="font-medium">{group.accountName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {group.transactions.length}件
-                            {selectedCount > 0 && (
-                              <span className="text-primary ml-2">
-                                ({selectedCount}件選択中)
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`font-heading font-bold tabular-nums ${
-                          group.type === "payable" ? "text-expense" : "text-income"
-                        }`}>
-                          ¥{group.totalAmount.toLocaleString("ja-JP")}
-                        </span>
-                        {isExpanded ? (
-                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                        )}
-                      </div>
-                    </button>
-
-                    {/* Transactions List */}
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="border-t border-border"
+                    return (
+                      <motion.div
+                        key={groupKey}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="bg-card rounded-xl border border-border overflow-hidden"
+                      >
+                        {/* Account Header */}
+                        <button
+                          onClick={() => toggleAccountExpand(groupKey)}
+                          className="w-full p-4 flex justify-between items-center hover:bg-accent transition-colors"
                         >
-                          <div className="p-4 space-y-3 bg-secondary/30">
-                            <div className="flex justify-between items-center">
-                              <p className="text-xs text-muted-foreground">取引を選択</p>
-                              <button
-                                onClick={() => selectAllForAccount(groupKey)}
-                                className="text-xs text-primary hover:underline"
-                              >
-                                すべて選択
-                              </button>
+                          <div className="flex items-center gap-3">
+                            {group.type === "payable" ? (
+                              <CreditCard className="w-5 h-5 text-muted-foreground" />
+                            ) : (
+                              <Wallet className="w-5 h-5 text-muted-foreground" />
+                            )}
+                            <div className="text-left">
+                              <p className="font-medium">{group.accountName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {group.transactions.length}件
+                                {selectedCount > 0 && (
+                                  <span className="text-primary ml-2">
+                                    ({selectedCount}件選択中)
+                                  </span>
+                                )}
+                              </p>
                             </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`font-heading font-bold tabular-nums ${
+                              group.type === "payable" ? "text-expense" : "text-income"
+                            }`}>
+                              ¥{group.totalAmount.toLocaleString("ja-JP")}
+                            </span>
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                            )}
+                          </div>
+                        </button>
 
-                            {group.transactions.map((tx) => {
-                              const remainingAmount = tx.total_amount - tx.settled_amount;
-                              return (
-                                <div
-                                  key={tx.id}
-                                  className="p-3 bg-card rounded-lg border border-border"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <Checkbox
-                                      checked={selectedTransactions.has(tx.id)}
-                                      onCheckedChange={() => toggleTransactionSelection(tx.id)}
-                                    />
-                                    <div className="flex-1">
-                                      <p className="font-medium text-sm">{tx.description}</p>
-                                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Calendar className="w-3 h-3" />
-                                        <span>
-                                          {format(new Date(tx.date), "M/d", { locale: ja })}
-                                        </span>
-                                        {tx.payment_date && tx.payment_date !== tx.date && (
-                                          <>
-                                            <span>→</span>
+                        {/* Transactions List */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="border-t border-border"
+                            >
+                              <div className="p-4 space-y-3 bg-secondary/30">
+                                <div className="flex justify-between items-center">
+                                  <p className="text-xs text-muted-foreground">取引を選択</p>
+                                  <button
+                                    onClick={() => selectAllForAccount(groupKey)}
+                                    className="text-xs text-primary hover:underline"
+                                  >
+                                    すべて選択
+                                  </button>
+                                </div>
+
+                                {group.transactions.map((tx) => {
+                                  const remainingAmount = tx.total_amount - tx.settled_amount;
+                                  return (
+                                    <div
+                                      key={tx.id}
+                                      className="p-3 bg-card rounded-lg border border-border"
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <Checkbox
+                                          checked={selectedTransactions.has(tx.id)}
+                                          onCheckedChange={() => toggleTransactionSelection(tx.id)}
+                                        />
+                                        <div className="flex-1">
+                                          <p className="font-medium text-sm">{tx.description}</p>
+                                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Calendar className="w-3 h-3" />
                                             <span>
-                                              {format(new Date(tx.payment_date), "M/d", { locale: ja })}
+                                              {format(new Date(tx.date), "M/d", { locale: ja })}
                                             </span>
-                                          </>
-                                        )}
+                                            {tx.payment_date && tx.payment_date !== tx.date && (
+                                              <>
+                                                <span>→</span>
+                                                <span>
+                                                  {format(new Date(tx.payment_date), "M/d", { locale: ja })}
+                                                </span>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="font-heading font-bold tabular-nums text-sm">
+                                            ¥{remainingAmount.toLocaleString("ja-JP")}
+                                          </span>
+                                          {tx.settled_amount > 0 && (
+                                            <p className="text-xs text-muted-foreground">
+                                              消込済: ¥{tx.settled_amount.toLocaleString("ja-JP")}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {/* 一部消し込みボタン */}
+                                      <div className="mt-2 flex justify-end">
+                                        <button
+                                          onClick={() => {
+                                            setPartialSettleDialog({ open: true, transaction: tx });
+                                            setPartialAmount(remainingAmount.toString());
+                                          }}
+                                          className="text-xs text-primary hover:underline"
+                                        >
+                                          一部消し込み
+                                        </button>
                                       </div>
                                     </div>
-                                    <div className="text-right">
-                                      <span className="font-heading font-bold tabular-nums text-sm">
-                                        ¥{remainingAmount.toLocaleString("ja-JP")}
-                                      </span>
-                                      {tx.settled_amount > 0 && (
-                                        <p className="text-xs text-muted-foreground">
-                                          消込済: ¥{tx.settled_amount.toLocaleString("ja-JP")}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {/* 一部消し込みボタン */}
-                                  <div className="mt-2 flex justify-end">
-                                    <button
-                                      onClick={() => {
-                                        setPartialSettleDialog({ open: true, transaction: tx });
-                                        setPartialAmount(remainingAmount.toString());
-                                      }}
-                                      className="text-xs text-primary hover:underline"
-                                    >
-                                      一部消し込み
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                );
-              })}
-            </div>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    );
+                  })}
+                </div>
 
-            {/* Settle Button */}
-            {selectedTransactions.size > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="fixed bottom-20 left-0 right-0 p-4 bg-background/80 backdrop-blur-sm border-t border-border"
-              >
+                {/* Settle Button */}
+                {selectedTransactions.size > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="fixed bottom-20 left-0 right-0 p-4 bg-background/80 backdrop-blur-sm border-t border-border md:hidden"
+                  >
                 <div className="max-w-lg mx-auto space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">
@@ -608,10 +610,81 @@ export default function CashSettlementsPage() {
                     )}
                   </Button>
                 </div>
-              </motion.div>
+                  </motion.div>
+                )}
+              </>
             )}
-          </>
-        )}
+          </div>
+
+          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+            <div className="grid gap-3">
+              <div className="bg-card rounded-xl p-4 border border-border">
+                <p className="text-xs text-muted-foreground">未払金 合計</p>
+                <p className="font-heading text-lg font-bold text-expense tabular-nums">
+                  ¥{totalPayables.toLocaleString("ja-JP")}
+                </p>
+              </div>
+              <div className="bg-card rounded-xl p-4 border border-border">
+                <p className="text-xs text-muted-foreground">未収金 合計</p>
+                <p className="font-heading text-lg font-bold text-income tabular-nums">
+                  ¥{totalReceivables.toLocaleString("ja-JP")}
+                </p>
+              </div>
+            </div>
+
+            {selectedTransactions.size > 0 && (
+              <div className="bg-card rounded-xl p-4 border border-border space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">
+                    {selectedTransactions.size}件選択
+                  </span>
+                  <span className="font-heading font-bold tabular-nums">
+                    ¥{selectedTotal.toLocaleString("ja-JP")}
+                  </span>
+                </div>
+
+                {cashAccounts.length > 0 && (
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      {activeTab === "payable" ? "引き落とし口座" : "入金口座"}
+                    </label>
+                    <Select
+                      value={selectedCashAccountId}
+                      onValueChange={setSelectedCashAccountId}
+                    >
+                      <SelectTrigger className="bg-background">
+                        <SelectValue placeholder="口座を選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cashAccounts.map((acc) => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.name} (¥{(acc.current_balance || 0).toLocaleString()})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleSettle}
+                  disabled={isSettling || (cashAccounts.length > 0 && !selectedCashAccountId)}
+                  className="w-full"
+                  size="lg"
+                >
+                  {isSettling ? (
+                    "処理中..."
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-2" />
+                      全額消し込む
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* 一部消し込みダイアログ */}

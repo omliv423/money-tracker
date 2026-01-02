@@ -172,225 +172,229 @@ export default function NewRecurringTransactionPage() {
         </div>
 
         {/* Form */}
-        <div className="space-y-4">
-          {/* Name */}
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              名前 <span className="text-destructive">*</span>
-            </label>
-            <Input
-              placeholder="例: 家賃"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              説明
-            </label>
-            <Input
-              placeholder="例: マンション家賃"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          {/* Account */}
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              口座
-            </label>
-            <Select value={accountId} onValueChange={setAccountId}>
-              <SelectTrigger>
-                <SelectValue placeholder="口座を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    {account.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Day of month & Payment delay */}
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-6 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-4">
+            {/* Name */}
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">
-                発生日（毎月）
+                名前 <span className="text-destructive">*</span>
               </label>
-              <Select
-                value={String(dayOfMonth)}
-                onValueChange={(v) => setDayOfMonth(Number(v))}
-              >
+              <Input
+                placeholder="例: 家賃"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">
+                説明
+              </label>
+              <Input
+                placeholder="例: マンション家賃"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+
+            {/* Account */}
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">
+                口座
+              </label>
+              <Select value={accountId} onValueChange={setAccountId}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="口座を選択" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                    <SelectItem key={day} value={String(day)}>
-                      {day}日
+                  {accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <label className="text-sm text-muted-foreground mb-1 block">
-                支払い遅延日数
-              </label>
-              <Select
-                value={String(paymentDelayDays)}
-                onValueChange={(v) => setPaymentDelayDays(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">同日</SelectItem>
-                  <SelectItem value="27">翌月27日</SelectItem>
-                  <SelectItem value="30">翌月末</SelectItem>
-                  <SelectItem value="57">翌々月27日</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          {/* Lines */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-muted-foreground">明細</label>
-              <button
-                onClick={handleAddLine}
-                className="text-xs text-primary hover:underline flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                明細を追加
-              </button>
-            </div>
-            <div className="space-y-3">
-              {lines.map((line, index) => (
-                <div
-                  key={line.id}
-                  className="bg-card rounded-lg p-3 border border-border space-y-3"
+            {/* Day of month & Payment delay */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  発生日（毎月）
+                </label>
+                <Select
+                  value={String(dayOfMonth)}
+                  onValueChange={(v) => setDayOfMonth(Number(v))}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">
-                      明細 {index + 1}
-                    </span>
-                    {lines.length > 1 && (
-                      <button
-                        onClick={() => handleRemoveLine(line.id)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <SelectItem key={day} value={String(day)}>
+                        {day}日
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  支払い遅延日数
+                </label>
+                <Select
+                  value={String(paymentDelayDays)}
+                  onValueChange={(v) => setPaymentDelayDays(Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">同日</SelectItem>
+                    <SelectItem value="27">翌月27日</SelectItem>
+                    <SelectItem value="30">翌月末</SelectItem>
+                    <SelectItem value="57">翌々月27日</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Amount */}
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">
-                        金額
-                      </label>
-                      <Input
-                        type="number"
-                        value={line.amount || ""}
-                        onChange={(e) =>
-                          handleLineChange(line.id, "amount", Number(e.target.value))
-                        }
-                        placeholder="0"
-                      />
+            {/* Lines */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-muted-foreground">明細</label>
+                <button
+                  onClick={handleAddLine}
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  明細を追加
+                </button>
+              </div>
+              <div className="space-y-3">
+                {lines.map((line, index) => (
+                  <div
+                    key={line.id}
+                    className="bg-card rounded-lg p-3 border border-border space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        明細 {index + 1}
+                      </span>
+                      {lines.length > 1 && (
+                        <button
+                          onClick={() => handleRemoveLine(line.id)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
 
-                    {/* Line Type */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Amount */}
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          金額
+                        </label>
+                        <Input
+                          type="number"
+                          value={line.amount || ""}
+                          onChange={(e) =>
+                            handleLineChange(line.id, "amount", Number(e.target.value))
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+
+                      {/* Line Type */}
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          種別
+                        </label>
+                        <Select
+                          value={line.lineType}
+                          onValueChange={(v) => handleLineChange(line.id, "lineType", v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="expense">支出</SelectItem>
+                            <SelectItem value="income">収入</SelectItem>
+                            <SelectItem value="asset">立替</SelectItem>
+                            <SelectItem value="liability">借入</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Category */}
                     <div>
                       <label className="text-xs text-muted-foreground mb-1 block">
-                        種別
+                        カテゴリ
                       </label>
                       <Select
-                        value={line.lineType}
-                        onValueChange={(v) => handleLineChange(line.id, "lineType", v)}
+                        value={line.categoryId}
+                        onValueChange={(v) => handleLineChange(line.id, "categoryId", v)}
                       >
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="カテゴリを選択" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="expense">支出</SelectItem>
-                          <SelectItem value="income">収入</SelectItem>
-                          <SelectItem value="asset">立替</SelectItem>
-                          <SelectItem value="liability">借入</SelectItem>
+                          {(line.lineType === "income" ? incomeCategories : expenseCategories).map(
+                            (cat) => (
+                              <SelectItem key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </SelectItem>
+                            )
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
 
-                  {/* Category */}
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      カテゴリ
-                    </label>
-                    <Select
-                      value={line.categoryId}
-                      onValueChange={(v) => handleLineChange(line.id, "categoryId", v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="カテゴリを選択" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(line.lineType === "income" ? incomeCategories : expenseCategories).map(
-                          (cat) => (
-                            <SelectItem key={cat.id} value={cat.id}>
-                              {cat.name}
-                            </SelectItem>
-                          )
-                        )}
-                      </SelectContent>
-                    </Select>
+                    {/* Counterparty for asset/liability */}
+                    {(line.lineType === "asset" || line.lineType === "liability") && (
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          相手先
+                        </label>
+                        <Input
+                          value={line.counterparty || ""}
+                          onChange={(e) =>
+                            handleLineChange(line.id, "counterparty", e.target.value || null)
+                          }
+                          placeholder="例: あさみ"
+                        />
+                      </div>
+                    )}
                   </div>
-
-                  {/* Counterparty for asset/liability */}
-                  {(line.lineType === "asset" || line.lineType === "liability") && (
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">
-                        相手先
-                      </label>
-                      <Input
-                        value={line.counterparty || ""}
-                        onChange={(e) =>
-                          handleLineChange(line.id, "counterparty", e.target.value || null)
-                        }
-                        placeholder="例: あさみ"
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Total */}
-          <div className="bg-card rounded-lg p-4 border border-border">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">合計金額</span>
-              <span className="text-xl font-bold font-mono">
-                ¥{totalAmount.toLocaleString()}
-              </span>
+          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+            {/* Total */}
+            <div className="bg-card rounded-lg p-4 border border-border">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">合計金額</span>
+                <span className="text-xl font-bold font-mono">
+                  ¥{totalAmount.toLocaleString()}
+                </span>
+              </div>
             </div>
-          </div>
 
-          {/* Save Button */}
-          <Button
-            onClick={handleSave}
-            disabled={!name.trim() || totalAmount <= 0 || isSaving}
-            className="w-full"
-          >
-            {isSaving ? "保存中..." : "保存する"}
-          </Button>
+            {/* Save Button */}
+            <Button
+              onClick={handleSave}
+              disabled={!name.trim() || totalAmount <= 0 || isSaving}
+              className="w-full"
+            >
+              {isSaving ? "保存中..." : "保存する"}
+            </Button>
+          </div>
         </div>
       </div>
     </MainLayout>

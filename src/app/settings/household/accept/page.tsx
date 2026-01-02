@@ -156,7 +156,7 @@ function AcceptInviteContent() {
 
   return (
     <MainLayout>
-      <div className="flex flex-col items-center justify-center py-12 space-y-6">
+        <div className="flex flex-col items-center justify-center py-12 space-y-6 md:py-16">
         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
           <Users className="w-10 h-10 text-primary" />
         </div>
@@ -170,7 +170,7 @@ function AcceptInviteContent() {
           </p>
         </div>
 
-        <div className="bg-card rounded-xl p-6 border border-border w-full max-w-sm space-y-4">
+        <div className="bg-card rounded-xl p-6 border border-border w-full max-w-sm md:max-w-md space-y-4">
           <div className="text-sm text-muted-foreground">
             <p className="font-medium text-foreground mb-2">参加すると...</p>
             <ul className="list-disc list-inside space-y-1">

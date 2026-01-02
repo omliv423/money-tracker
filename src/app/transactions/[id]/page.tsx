@@ -373,203 +373,205 @@ export default function TransactionDetailPage({
 
         {isEditing ? (
           /* Edit Mode */
-          <div className="space-y-4">
-            {/* Description */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">説明</label>
-              <Input
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                placeholder="説明を入力"
-              />
-            </div>
-
-            {/* Dates */}
-            <div className="bg-card rounded-xl p-4 border border-border space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Calendar className="w-4 h-4" /> 発生日
-                </label>
+          <div className="space-y-6 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
+            <div className="space-y-4">
+              {/* Description */}
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">説明</label>
                 <Input
-                  type="date"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-40 text-right"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="説明を入力"
                 />
               </div>
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-muted-foreground flex items-center gap-2">
-                  <CreditCard className="w-4 h-4" /> {isIncome ? "入金日" : "支払日"}
-                </label>
-                <div className="flex items-center gap-2">
-                  {editPaymentDate === null ? (
-                    <span className="text-sm text-muted-foreground">未定</span>
-                  ) : (
-                    <Input
-                      type="date"
-                      value={editPaymentDate}
-                      onChange={(e) => setEditPaymentDate(e.target.value)}
-                      className="w-40 text-right"
-                    />
-                  )}
-                  <label className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editPaymentDate === null}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setEditPaymentDate(null);
-                        } else {
-                          setEditPaymentDate(format(new Date(), "yyyy-MM-dd"));
-                        }
-                      }}
-                      className="w-4 h-4 rounded border-border"
-                    />
-                    未定
+
+              {/* Dates */}
+              <div className="bg-card rounded-xl p-4 border border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Calendar className="w-4 h-4" /> 発生日
                   </label>
+                  <Input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-40 text-right"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <CreditCard className="w-4 h-4" /> {isIncome ? "入金日" : "支払日"}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {editPaymentDate === null ? (
+                      <span className="text-sm text-muted-foreground">未定</span>
+                    ) : (
+                      <Input
+                        type="date"
+                        value={editPaymentDate}
+                        onChange={(e) => setEditPaymentDate(e.target.value)}
+                        className="w-40 text-right"
+                      />
+                    )}
+                    <label className="flex items-center gap-1 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editPaymentDate === null}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEditPaymentDate(null);
+                          } else {
+                            setEditPaymentDate(format(new Date(), "yyyy-MM-dd"));
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-border"
+                      />
+                      未定
+                    </label>
+                  </div>
+                </div>
+                {/* 決済状態プレビュー */}
+                <div className="mt-2 text-xs">
+                  {editPaymentDate === null ? (
+                    <span className="text-orange-500">→ 保存後: {isIncome ? "未収金" : "未払金"}として計上</span>
+                  ) : editPaymentDate <= editDate ? (
+                    <span className="text-green-500">→ 保存後: 決済済み（BSに計上されない）</span>
+                  ) : (
+                    <span className="text-orange-500">→ 保存後: {isIncome ? "未収金" : "未払金"}として計上</span>
+                  )}
                 </div>
               </div>
-              {/* 決済状態プレビュー */}
-              <div className="mt-2 text-xs">
-                {editPaymentDate === null ? (
-                  <span className="text-orange-500">→ 保存後: {isIncome ? "未収金" : "未払金"}として計上</span>
-                ) : editPaymentDate <= editDate ? (
-                  <span className="text-green-500">→ 保存後: 決済済み（BSに計上されない）</span>
-                ) : (
-                  <span className="text-orange-500">→ 保存後: {isIncome ? "未収金" : "未払金"}として計上</span>
-                )}
-              </div>
-            </div>
 
-            {/* Account */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground flex items-center gap-1">
-                <Wallet className="w-3 h-3" /> {isIncome ? "入金先" : "支払い方法"}
-              </label>
-              <Select value={editAccountId} onValueChange={setEditAccountId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Lines */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">内訳</label>
-                <span className="text-sm text-muted-foreground">
-                  合計: ¥{editTotal.toLocaleString()}
-                </span>
+              {/* Account */}
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Wallet className="w-3 h-3" /> {isIncome ? "入金先" : "支払い方法"}
+                </label>
+                <Select value={editAccountId} onValueChange={setEditAccountId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              {editLines.map((line, index) => (
-                <div
-                  key={line.id}
-                  className="bg-card rounded-xl p-4 border border-border space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <Select
-                      value={line.line_type}
-                      onValueChange={(v) => handleUpdateLine(index, { line_type: v })}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="expense">費用</SelectItem>
-                        <SelectItem value="income">収入</SelectItem>
-                        <SelectItem value="asset">立替</SelectItem>
-                        <SelectItem value="liability">借入</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {editLines.length > 1 && (
-                      <button
-                        onClick={() => handleRemoveLine(index)}
-                        className="p-1 hover:bg-accent rounded text-muted-foreground"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+              {/* Lines */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">内訳</label>
+                  <span className="text-sm text-muted-foreground">
+                    合計: ¥{editTotal.toLocaleString()}
+                  </span>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-muted-foreground">カテゴリ</label>
+                {editLines.map((line, index) => (
+                  <div
+                    key={line.id}
+                    className="bg-card rounded-xl p-4 border border-border space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
                       <Select
-                        value={line.category_id}
-                        onValueChange={(v) => {
-                          const cat = categories.find((c) => c.id === v);
-                          handleUpdateLine(index, {
-                            category_id: v,
-                            category: cat ? { id: cat.id, name: cat.name } : null,
-                          });
-                        }}
+                        value={line.line_type}
+                        onValueChange={(v) => handleUpdateLine(index, { line_type: v })}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="w-32">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {categories.map((cat) => (
-                            <SelectItem key={cat.id} value={cat.id}>
-                              {cat.name}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="expense">費用</SelectItem>
+                          <SelectItem value="income">収入</SelectItem>
+                          <SelectItem value="asset">立替</SelectItem>
+                          <SelectItem value="liability">借入</SelectItem>
                         </SelectContent>
                       </Select>
+                      {editLines.length > 1 && (
+                        <button
+                          onClick={() => handleRemoveLine(index)}
+                          className="p-1 hover:bg-accent rounded text-muted-foreground"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">金額</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">¥</span>
-                        <Input
-                          type="text"
-                          inputMode="numeric"
-                          value={line.amount || ""}
-                          onChange={(e) =>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground">カテゴリ</label>
+                        <Select
+                          value={line.category_id}
+                          onValueChange={(v) => {
+                            const cat = categories.find((c) => c.id === v);
                             handleUpdateLine(index, {
-                              amount: parseInt(e.target.value.replace(/[^0-9]/g, ""), 10) || 0,
-                            })
-                          }
-                          className="pl-7"
-                        />
+                              category_id: v,
+                              category: cat ? { id: cat.id, name: cat.name } : null,
+                            });
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">金額</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">¥</span>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            value={line.amount || ""}
+                            onChange={(e) =>
+                              handleUpdateLine(index, {
+                                amount: parseInt(e.target.value.replace(/[^0-9]/g, ""), 10) || 0,
+                              })
+                            }
+                            className="pl-7"
+                          />
+                        </div>
                       </div>
                     </div>
+
+                    {(line.line_type === "asset" || line.line_type === "liability") && (
+                      <div>
+                        <label className="text-xs text-muted-foreground">相手先</label>
+                        <Input
+                          value={line.counterparty || ""}
+                          onChange={(e) =>
+                            handleUpdateLine(index, { counterparty: e.target.value || null })
+                          }
+                          placeholder="例: 彼女"
+                        />
+                      </div>
+                    )}
                   </div>
+                ))}
 
-                  {(line.line_type === "asset" || line.line_type === "liability") && (
-                    <div>
-                      <label className="text-xs text-muted-foreground">相手先</label>
-                      <Input
-                        value={line.counterparty || ""}
-                        onChange={(e) =>
-                          handleUpdateLine(index, { counterparty: e.target.value || null })
-                        }
-                        placeholder="例: 彼女"
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              <Button variant="outline" onClick={handleAddLine} className="w-full">
-                <Plus className="w-4 h-4 mr-2" />
-                内訳を追加
-              </Button>
+                <Button variant="outline" onClick={handleAddLine} className="w-full">
+                  <Plus className="w-4 h-4 mr-2" />
+                  内訳を追加
+                </Button>
+              </div>
             </div>
 
             {/* Save/Cancel Buttons */}
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={handleCancelEdit} className="flex-1">
+            <div className="space-y-3 lg:sticky lg:top-24 lg:self-start">
+              <Button variant="outline" onClick={handleCancelEdit} className="w-full">
                 キャンセル
               </Button>
-              <Button onClick={handleSave} disabled={isSaving} className="flex-1">
+              <Button onClick={handleSave} disabled={isSaving} className="w-full">
                 {isSaving ? "保存中..." : (
                   <>
                     <Check className="w-4 h-4 mr-2" />
@@ -581,109 +583,113 @@ export default function TransactionDetailPage({
           </div>
         ) : (
           /* View Mode */
-          <>
-            {/* Main Info Card */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-card rounded-xl p-5 border border-border"
-            >
-              <div className="text-center mb-4">
-                <p className="text-muted-foreground text-sm mb-1">{transaction.description}</p>
-                <p className={`font-heading text-3xl font-bold tabular-nums ${isIncome ? "text-income" : "text-expense"}`}>
-                  {isIncome ? "+" : "-"}¥{transaction.total_amount.toLocaleString("ja-JP")}
+          <div className="space-y-6 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
+            <div className="space-y-6">
+              {/* Transaction Lines */}
+              <div>
+                <h2 className="text-sm font-medium text-muted-foreground mb-3">内訳</h2>
+                <div className="space-y-3">
+                  {transaction.transaction_lines.map((line, index) => {
+                    const lineIsIncome = line.line_type === "income";
+                    return (
+                      <motion.div
+                        key={line.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="bg-card rounded-xl p-4 border border-border"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-2">
+                            <Tag className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-medium">{line.category?.name || "未分類"}</span>
+                          </div>
+                          <span className={`font-heading font-bold tabular-nums ${lineIsIncome ? "text-income" : "text-expense"}`}>
+                            {lineIsIncome ? "+" : "-"}¥{line.amount.toLocaleString("ja-JP")}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <span className="px-2 py-1 bg-secondary rounded-full">
+                            {lineTypeLabels[line.line_type] || line.line_type}
+                          </span>
+                          {line.counterparty && (
+                            <span className="px-2 py-1 bg-secondary rounded-full">
+                              {line.counterparty}
+                            </span>
+                          )}
+                          {line.amortization_months && line.amortization_months > 1 && (
+                            <span className="px-2 py-1 bg-primary/20 text-primary rounded-full flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {line.amortization_months}ヶ月按分
+                            </span>
+                          )}
+                        </div>
+
+                        {line.amortization_start && line.amortization_end && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            按分期間: {format(new Date(line.amortization_start), "yyyy/M/d")} 〜{" "}
+                            {format(new Date(line.amortization_end), "yyyy/M/d")}
+                          </p>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Meta Info */}
+              <div className="text-xs text-muted-foreground text-center">
+                <p>
+                  作成日時: {format(new Date(transaction.created_at), "yyyy/M/d HH:mm", { locale: ja })}
                 </p>
               </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-muted-foreground text-xs">発生日</p>
-                    <p>{format(new Date(transaction.date), "yyyy/M/d", { locale: ja })}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-muted-foreground text-xs">{isIncome ? "入金日" : "支払日"}</p>
-                    <p>
-                      {transaction.payment_date
-                        ? format(new Date(transaction.payment_date), "yyyy/M/d", { locale: ja })
-                        : "未定"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 col-span-2">
-                  <Wallet className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-muted-foreground text-xs">{isIncome ? "入金先" : "支払い方法"}</p>
-                    <p>{transaction.account?.name || "不明"}</p>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Transaction Lines */}
-            <div>
-              <h2 className="text-sm font-medium text-muted-foreground mb-3">内訳</h2>
-              <div className="space-y-3">
-                {transaction.transaction_lines.map((line, index) => {
-                  const lineIsIncome = line.line_type === "income";
-                  return (
-                    <motion.div
-                      key={line.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className="bg-card rounded-xl p-4 border border-border"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-2">
-                          <Tag className="w-4 h-4 text-muted-foreground" />
-                          <span className="font-medium">{line.category?.name || "未分類"}</span>
-                        </div>
-                        <span className={`font-heading font-bold tabular-nums ${lineIsIncome ? "text-income" : "text-expense"}`}>
-                          {lineIsIncome ? "+" : "-"}¥{line.amount.toLocaleString("ja-JP")}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        <span className="px-2 py-1 bg-secondary rounded-full">
-                          {lineTypeLabels[line.line_type] || line.line_type}
-                        </span>
-                        {line.counterparty && (
-                          <span className="px-2 py-1 bg-secondary rounded-full">
-                            {line.counterparty}
-                          </span>
-                        )}
-                        {line.amortization_months && line.amortization_months > 1 && (
-                          <span className="px-2 py-1 bg-primary/20 text-primary rounded-full flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {line.amortization_months}ヶ月按分
-                          </span>
-                        )}
-                      </div>
-
-                      {line.amortization_start && line.amortization_end && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          按分期間: {format(new Date(line.amortization_start), "yyyy/M/d")} 〜{" "}
-                          {format(new Date(line.amortization_end), "yyyy/M/d")}
-                        </p>
-                      )}
-                    </motion.div>
-                  );
-                })}
-              </div>
             </div>
 
-            {/* Meta Info */}
-            <div className="text-xs text-muted-foreground text-center">
-              <p>
-                作成日時: {format(new Date(transaction.created_at), "yyyy/M/d HH:mm", { locale: ja })}
-              </p>
+            {/* Main Info Card */}
+            <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-card rounded-xl p-5 border border-border"
+              >
+                <div className="text-center mb-4">
+                  <p className="text-muted-foreground text-sm mb-1">{transaction.description}</p>
+                  <p className={`font-heading text-3xl font-bold tabular-nums ${isIncome ? "text-income" : "text-expense"}`}>
+                    {isIncome ? "+" : "-"}¥{transaction.total_amount.toLocaleString("ja-JP")}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-muted-foreground text-xs">発生日</p>
+                      <p>{format(new Date(transaction.date), "yyyy/M/d", { locale: ja })}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-muted-foreground text-xs">{isIncome ? "入金日" : "支払日"}</p>
+                      <p>
+                        {transaction.payment_date
+                          ? format(new Date(transaction.payment_date), "yyyy/M/d", { locale: ja })
+                          : "未定"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 col-span-2">
+                    <Wallet className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-muted-foreground text-xs">{isIncome ? "入金先" : "支払い方法"}</p>
+                      <p>{transaction.account?.name || "不明"}</p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
             </div>
-          </>
+          </div>
         )}
       </div>
 

@@ -239,7 +239,8 @@ export default function TransferPage() {
         )}
 
         {/* Transfer Form */}
-        <div className="space-y-4">
+        <div className="space-y-6 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-4">
           {/* Date */}
           <div className="bg-card rounded-xl p-4 border border-border flex items-center justify-between">
             <label className="text-sm text-muted-foreground flex items-center gap-2">
@@ -359,47 +360,50 @@ export default function TransferPage() {
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
+          </div>
 
-          {/* Summary */}
-          {amount && parseInt(amount, 10) > 0 && (
-            <div className="bg-secondary/50 rounded-xl p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">移動金額</span>
-                <span>¥{parseInt(amount, 10).toLocaleString()}</span>
-              </div>
-              {fee && parseInt(fee, 10) > 0 && (
+          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+            {/* Summary */}
+            {amount && parseInt(amount, 10) > 0 && (
+              <div className="bg-secondary/50 rounded-xl p-4 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">振込手数料</span>
-                  <span className="text-expense">¥{parseInt(fee, 10).toLocaleString()}</span>
+                  <span className="text-muted-foreground">移動金額</span>
+                  <span>¥{parseInt(amount, 10).toLocaleString()}</span>
                 </div>
-              )}
-              <div className="flex justify-between font-bold border-t border-border pt-2">
-                <span>合計出金</span>
-                <span>¥{(parseInt(amount, 10) + (fee ? parseInt(fee, 10) : 0)).toLocaleString()}</span>
+                {fee && parseInt(fee, 10) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">振込手数料</span>
+                    <span className="text-expense">¥{parseInt(fee, 10).toLocaleString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold border-t border-border pt-2">
+                  <span>合計出金</span>
+                  <span>¥{(parseInt(amount, 10) + (fee ? parseInt(fee, 10) : 0)).toLocaleString()}</span>
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* Submit Button */}
-          <Button
-            onClick={handleTransfer}
-            disabled={!canTransfer || isSaving}
-            className="w-full h-14 text-lg font-medium"
-            size="lg"
-          >
-            {isSaving ? (
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                className="w-5 h-5 border-2 border-current border-t-transparent rounded-full"
-              />
-            ) : (
-              <>
-                <Check className="w-5 h-5 mr-2" />
-                資金移動を記録
-              </>
             )}
-          </Button>
+
+            {/* Submit Button */}
+            <Button
+              onClick={handleTransfer}
+              disabled={!canTransfer || isSaving}
+              className="w-full h-14 text-lg font-medium"
+              size="lg"
+            >
+              {isSaving ? (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                  className="w-5 h-5 border-2 border-current border-t-transparent rounded-full"
+                />
+              ) : (
+                <>
+                  <Check className="w-5 h-5 mr-2" />
+                  資金移動を記録
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </MainLayout>

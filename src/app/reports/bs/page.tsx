@@ -329,8 +329,10 @@ export default function BSReportPage() {
           <h1 className="font-heading text-xl font-bold">貸借対照表 (BS)</h1>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-4 lg:order-2 lg:sticky lg:top-24 lg:self-start">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-3 gap-2 lg:grid-cols-1 lg:gap-3">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -365,113 +367,115 @@ export default function BSReportPage() {
               {netPosition >= 0 ? "" : ""}¥{netPosition.toLocaleString("ja-JP")}
             </p>
           </motion.div>
-        </div>
+            </div>
 
-        {/* Chart Toggle Button */}
-        <button
-          onClick={() => setShowChart(!showChart)}
-          className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
-            showChart
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-card border-border hover:bg-accent"
-          }`}
-        >
-          <PieChartIcon className="w-4 h-4" />
-          <span className="text-sm">資産・負債グラフ</span>
-        </button>
-
-        {/* BS Chart - T字型 */}
-        <AnimatePresence>
-          {showChart && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-card rounded-xl p-4 border border-border"
+            {/* Chart Toggle Button */}
+            <button
+              onClick={() => setShowChart(!showChart)}
+              className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+                showChart
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card border-border hover:bg-accent"
+              }`}
             >
-              <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
-                貸借対照表
-              </h3>
-              {/* T字型レイアウト */}
-              <div className="grid grid-cols-2 gap-2">
-                {/* 左側：資産 */}
-                <div className="border-r border-border pr-2">
-                  <p className="text-xs text-muted-foreground text-center mb-2 font-medium">資産</p>
-                  <div className="space-y-1">
-                    {/* 現預金 */}
-                    {cashBalances.map((item) => (
-                      <div key={item.accountId} className="flex justify-between text-xs">
-                        <span className="truncate">{item.accountName}</span>
-                        <span className="text-income ml-1">¥{item.balance.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    {/* 未収金 */}
-                    {receivablesByAccount.map((item) => (
-                      <div key={item.accountId} className="flex justify-between text-xs">
-                        <span className="truncate">未収金({item.accountName})</span>
-                        <span className="text-income ml-1">¥{item.totalAmount.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    {/* 立替金 */}
-                    {receivables.map((item) => (
-                      <div key={item.counterparty} className="flex justify-between text-xs">
-                        <span className="truncate">立替({item.counterparty})</span>
-                        <span className="text-income ml-1">¥{item.amount.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    {cashBalances.length === 0 && receivablesByAccount.length === 0 && receivables.length === 0 && (
-                      <p className="text-xs text-muted-foreground text-center">-</p>
-                    )}
-                  </div>
-                  <div className="border-t border-border mt-2 pt-2 flex justify-between text-sm font-bold">
-                    <span>合計</span>
-                    <span className="text-income">¥{totalAssets.toLocaleString()}</span>
-                  </div>
-                </div>
-                {/* 右側：負債 + 純資産 */}
-                <div className="pl-2">
-                  <p className="text-xs text-muted-foreground text-center mb-2 font-medium">負債・純資産</p>
-                  <div className="space-y-1">
-                    {/* 未払金 */}
-                    {payablesByAccount.map((p) => (
-                      <div key={p.accountId} className="flex justify-between text-xs">
-                        <span className="truncate">{p.accountName}</span>
-                        <span className="text-expense ml-1">¥{p.totalAmount.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    {/* 借入金 */}
-                    {liabilities.map((item) => (
-                      <div key={item.counterparty} className="flex justify-between text-xs">
-                        <span className="truncate">{item.counterparty}</span>
-                        <span className="text-expense ml-1">¥{item.amount.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    {payablesByAccount.length === 0 && liabilities.length === 0 && (
-                      <p className="text-xs text-muted-foreground text-center">-</p>
-                    )}
-                  </div>
-                  <div className="border-t border-border mt-2 pt-2 space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span>負債計</span>
-                      <span className="text-expense">¥{totalLiabilities.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-sm font-bold">
-                      <span>純資産</span>
-                      <span className={netPosition >= 0 ? "text-income" : "text-expense"}>
-                        ¥{netPosition.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm font-bold border-t border-border pt-1">
-                      <span>合計</span>
-                      <span>¥{(totalLiabilities + netPosition).toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <PieChartIcon className="w-4 h-4" />
+              <span className="text-sm">資産・負債グラフ</span>
+            </button>
 
+            {/* BS Chart - T字型 */}
+            <AnimatePresence>
+              {showChart && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-card rounded-xl p-4 border border-border"
+                >
+                  <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
+                    貸借対照表
+                  </h3>
+                  {/* T字型レイアウト */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* 左側：資産 */}
+                    <div className="border-r border-border pr-2">
+                      <p className="text-xs text-muted-foreground text-center mb-2 font-medium">資産</p>
+                      <div className="space-y-1">
+                        {/* 現預金 */}
+                        {cashBalances.map((item) => (
+                          <div key={item.accountId} className="flex justify-between text-xs">
+                            <span className="truncate">{item.accountName}</span>
+                            <span className="text-income ml-1">¥{item.balance.toLocaleString()}</span>
+                          </div>
+                        ))}
+                        {/* 未収金 */}
+                        {receivablesByAccount.map((item) => (
+                          <div key={item.accountId} className="flex justify-between text-xs">
+                            <span className="truncate">未収金({item.accountName})</span>
+                            <span className="text-income ml-1">¥{item.totalAmount.toLocaleString()}</span>
+                          </div>
+                        ))}
+                        {/* 立替金 */}
+                        {receivables.map((item) => (
+                          <div key={item.counterparty} className="flex justify-between text-xs">
+                            <span className="truncate">立替({item.counterparty})</span>
+                            <span className="text-income ml-1">¥{item.amount.toLocaleString()}</span>
+                          </div>
+                        ))}
+                        {cashBalances.length === 0 && receivablesByAccount.length === 0 && receivables.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center">-</p>
+                        )}
+                      </div>
+                      <div className="border-t border-border mt-2 pt-2 flex justify-between text-sm font-bold">
+                        <span>合計</span>
+                        <span className="text-income">¥{totalAssets.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    {/* 右側：負債 + 純資産 */}
+                    <div className="pl-2">
+                      <p className="text-xs text-muted-foreground text-center mb-2 font-medium">負債・純資産</p>
+                      <div className="space-y-1">
+                        {/* 未払金 */}
+                        {payablesByAccount.map((p) => (
+                          <div key={p.accountId} className="flex justify-between text-xs">
+                            <span className="truncate">{p.accountName}</span>
+                            <span className="text-expense ml-1">¥{p.totalAmount.toLocaleString()}</span>
+                          </div>
+                        ))}
+                        {/* 借入金 */}
+                        {liabilities.map((item) => (
+                          <div key={item.counterparty} className="flex justify-between text-xs">
+                            <span className="truncate">{item.counterparty}</span>
+                            <span className="text-expense ml-1">¥{item.amount.toLocaleString()}</span>
+                          </div>
+                        ))}
+                        {payablesByAccount.length === 0 && liabilities.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center">-</p>
+                        )}
+                      </div>
+                      <div className="border-t border-border mt-2 pt-2 space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span>負債計</span>
+                          <span className="text-expense">¥{totalLiabilities.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-sm font-bold">
+                          <span>純資産</span>
+                          <span className={netPosition >= 0 ? "text-income" : "text-expense"}>
+                            ¥{netPosition.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-sm font-bold border-t border-border pt-1">
+                          <span>合計</span>
+                          <span>¥{(totalLiabilities + netPosition).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="space-y-6 lg:order-1">
         {/* 資産の部 */}
         <div className="space-y-4">
           <h2 className="text-base font-bold border-b border-border pb-2">資産の部</h2>
@@ -742,6 +746,8 @@ export default function BSReportPage() {
                 <span className="text-xs text-muted-foreground capitalize">{account.type}</span>
               </motion.div>
             ))}
+          </div>
+        </div>
           </div>
         </div>
       </div>

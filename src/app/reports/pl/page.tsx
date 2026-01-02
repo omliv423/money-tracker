@@ -473,221 +473,227 @@ export default function PLReportPage() {
           </button>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-2">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card rounded-xl p-3 border border-border"
-          >
-            <div className="flex items-center gap-1 mb-1">
-              <TrendingUp className="w-3 h-3 text-income flex-shrink-0" />
-              <p className="text-xs text-muted-foreground">収入</p>
+        <div className="space-y-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-6">
+            {/* Income Breakdown */}
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-income" />
+                収入の内訳
+                <span className="text-xs">（タップで展開）</span>
+              </h2>
+              {incomeByParent.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4 text-sm">収入なし</p>
+              ) : (
+                <div className="space-y-2">
+                  {incomeByParent.map((parent, index) =>
+                    renderCategoryItem(parent, "text-income", index)
+                  )}
+                </div>
+              )}
             </div>
-            <p className="font-heading text-sm font-bold tabular-nums text-income whitespace-nowrap overflow-hidden">
-              ¥{totalIncome.toLocaleString("ja-JP")}
-            </p>
-          </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="bg-card rounded-xl p-3 border border-border"
-          >
-            <div className="flex items-center gap-1 mb-1">
-              <TrendingDown className="w-3 h-3 text-expense flex-shrink-0" />
-              <p className="text-xs text-muted-foreground">支出</p>
+            {/* Expense Breakdown */}
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                <TrendingDown className="w-4 h-4 text-expense" />
+                支出の内訳
+                <span className="text-xs">（タップで展開）</span>
+              </h2>
+              {expenseByParent.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4 text-sm">支出なし</p>
+              ) : (
+                <div className="space-y-2">
+                  {expenseByParent.map((parent, index) =>
+                    renderCategoryItem(parent, "text-expense", index)
+                  )}
+                </div>
+              )}
             </div>
-            <p className="font-heading text-sm font-bold tabular-nums text-expense whitespace-nowrap overflow-hidden">
-              ¥{totalExpense.toLocaleString("ja-JP")}
-            </p>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-card rounded-xl p-3 border border-border"
-          >
-            <p className="text-xs text-muted-foreground mb-1">収支</p>
-            <p
-              className={`font-heading text-sm font-bold tabular-nums whitespace-nowrap overflow-hidden ${
-                netIncome >= 0 ? "text-income" : "text-expense"
-              }`}
-            >
-              {netIncome >= 0 ? "+" : ""}¥{netIncome.toLocaleString("ja-JP")}
-            </p>
-          </motion.div>
-        </div>
+          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-3 gap-2 lg:grid-cols-1 lg:gap-3">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-card rounded-xl p-3 border border-border"
+              >
+                <div className="flex items-center gap-1 mb-1">
+                  <TrendingUp className="w-3 h-3 text-income flex-shrink-0" />
+                  <p className="text-xs text-muted-foreground">収入</p>
+                </div>
+                <p className="font-heading text-sm font-bold tabular-nums text-income whitespace-nowrap overflow-hidden">
+                  ¥{totalIncome.toLocaleString("ja-JP")}
+                </p>
+              </motion.div>
 
-        {/* Chart Toggle Buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowChart(showChart === "pie" ? null : "pie")}
-            className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
-              showChart === "pie"
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card border-border hover:bg-accent"
-            }`}
-          >
-            <PieChartIcon className="w-4 h-4" />
-            <span className="text-sm">費用の割合</span>
-          </button>
-          <button
-            onClick={() => setShowChart(showChart === "bar" ? null : "bar")}
-            className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
-              showChart === "bar"
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card border-border hover:bg-accent"
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span className="text-sm">月次推移</span>
-          </button>
-        </div>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 }}
+                className="bg-card rounded-xl p-3 border border-border"
+              >
+                <div className="flex items-center gap-1 mb-1">
+                  <TrendingDown className="w-3 h-3 text-expense flex-shrink-0" />
+                  <p className="text-xs text-muted-foreground">支出</p>
+                </div>
+                <p className="font-heading text-sm font-bold tabular-nums text-expense whitespace-nowrap overflow-hidden">
+                  ¥{totalExpense.toLocaleString("ja-JP")}
+                </p>
+              </motion.div>
 
-        {/* Pie Chart - 費用の割合 */}
-        <AnimatePresence mode="wait">
-          {showChart === "pie" && expenseByParent.length > 0 && (
-            <motion.div
-              key={`pie-${format(currentMonth, "yyyy-MM")}`}
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-card rounded-xl p-4 border border-border"
-            >
-              <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
-                支出の内訳（カテゴリ別）
-              </h3>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={expenseByParent.map((cat) => ({
-                        name: cat.categoryName,
-                        value: cat.amount,
-                      }))}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={70}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {expenseByParent.map((_, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={COLORS[index % COLORS.length]}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="bg-card rounded-xl p-3 border border-border"
+              >
+                <p className="text-xs text-muted-foreground mb-1">収支</p>
+                <p
+                  className={`font-heading text-sm font-bold tabular-nums whitespace-nowrap overflow-hidden ${
+                    netIncome >= 0 ? "text-income" : "text-expense"
+                  }`}
+                >
+                  {netIncome >= 0 ? "+" : ""}¥{netIncome.toLocaleString("ja-JP")}
+                </p>
+              </motion.div>
+            </div>
+
+            {/* Chart Toggle Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowChart(showChart === "pie" ? null : "pie")}
+                className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+                  showChart === "pie"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card border-border hover:bg-accent"
+                }`}
+              >
+                <PieChartIcon className="w-4 h-4" />
+                <span className="text-sm">費用の割合</span>
+              </button>
+              <button
+                onClick={() => setShowChart(showChart === "bar" ? null : "bar")}
+                className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+                  showChart === "bar"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card border-border hover:bg-accent"
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span className="text-sm">月次推移</span>
+              </button>
+            </div>
+
+            {/* Pie Chart - 費用の割合 */}
+            <AnimatePresence mode="wait">
+              {showChart === "pie" && expenseByParent.length > 0 && (
+                <motion.div
+                  key={`pie-${format(currentMonth, "yyyy-MM")}`}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-card rounded-xl p-4 border border-border"
+                >
+                  <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
+                    支出の内訳（カテゴリ別）
+                  </h3>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={expenseByParent.map((cat) => ({
+                            name: cat.categoryName,
+                            value: cat.amount,
+                          }))}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={40}
+                          outerRadius={70}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {expenseByParent.map((_, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={COLORS[index % COLORS.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value) =>
+                            `¥${Number(value).toLocaleString("ja-JP")}`
+                          }
                         />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) =>
-                        `¥${Number(value).toLocaleString("ja-JP")}`
-                      }
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              {/* Legend */}
-              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
-                {expenseByParent.map((cat, index) => (
-                  <div key={cat.categoryId} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1 min-w-0">
-                      <div
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                      />
-                      <span className="truncate">{cat.categoryName}</span>
-                    </div>
-                    <span className="text-muted-foreground ml-1 flex-shrink-0">
-                      {totalExpense > 0 ? `${((cat.amount / totalExpense) * 100).toFixed(0)}%` : "0%"}
-                    </span>
+                      </PieChart>
+                    </ResponsiveContainer>
                   </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Bar Chart - 月次推移 */}
-        <AnimatePresence mode="wait">
-          {showChart === "bar" && monthlyTrend.length > 0 && (
-            <motion.div
-              key={`bar-${format(currentMonth, "yyyy-MM")}`}
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-card rounded-xl p-4 border border-border"
-            >
-              <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
-                過去6ヶ月の収支推移
-              </h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyTrend}>
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      tickFormatter={(value) =>
-                        value >= 10000 ? `${(value / 10000).toFixed(0)}万` : value
-                      }
-                    />
-                    <Tooltip
-                      formatter={(value) =>
-                        `¥${Number(value).toLocaleString("ja-JP")}`
-                      }
-                    />
-                    <Legend
-                      wrapperStyle={{ fontSize: 12 }}
-                      formatter={(value) =>
-                        value === "income" ? "収入" : value === "expense" ? "支出" : "収支"
-                      }
-                    />
-                    <Bar dataKey="income" name="income" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="expense" name="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Income Breakdown */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-income" />
-            収入の内訳
-            <span className="text-xs">（タップで展開）</span>
-          </h2>
-          {incomeByParent.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4 text-sm">収入なし</p>
-          ) : (
-            <div className="space-y-2">
-              {incomeByParent.map((parent, index) =>
-                renderCategoryItem(parent, "text-income", index)
+                  {/* Legend */}
+                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                    {expenseByParent.map((cat, index) => (
+                      <div key={cat.categoryId} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <div
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                          />
+                          <span className="truncate">{cat.categoryName}</span>
+                        </div>
+                        <span className="text-muted-foreground ml-1 flex-shrink-0">
+                          {totalExpense > 0 ? `${((cat.amount / totalExpense) * 100).toFixed(0)}%` : "0%"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
               )}
-            </div>
-          )}
-        </div>
+            </AnimatePresence>
 
-        {/* Expense Breakdown */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-            <TrendingDown className="w-4 h-4 text-expense" />
-            支出の内訳
-            <span className="text-xs">（タップで展開）</span>
-          </h2>
-          {expenseByParent.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4 text-sm">支出なし</p>
-          ) : (
-            <div className="space-y-2">
-              {expenseByParent.map((parent, index) =>
-                renderCategoryItem(parent, "text-expense", index)
+            {/* Bar Chart - 月次推移 */}
+            <AnimatePresence mode="wait">
+              {showChart === "bar" && monthlyTrend.length > 0 && (
+                <motion.div
+                  key={`bar-${format(currentMonth, "yyyy-MM")}`}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-card rounded-xl p-4 border border-border"
+                >
+                  <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
+                    過去6ヶ月の収支推移
+                  </h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlyTrend}>
+                        <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                        <YAxis
+                          tick={{ fontSize: 10 }}
+                          tickFormatter={(value) =>
+                            value >= 10000 ? `${(value / 10000).toFixed(0)}万` : value
+                          }
+                        />
+                        <Tooltip
+                          formatter={(value) =>
+                            `¥${Number(value).toLocaleString("ja-JP")}`
+                          }
+                        />
+                        <Legend
+                          wrapperStyle={{ fontSize: 12 }}
+                          formatter={(value) =>
+                            value === "income" ? "収入" : value === "expense" ? "支出" : "収支"
+                          }
+                        />
+                        <Bar dataKey="income" name="income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="expense" name="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </motion.div>
               )}
-            </div>
-          )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </MainLayout>

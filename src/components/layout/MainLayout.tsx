@@ -1,6 +1,7 @@
 "use client";
 
 import { BottomNav } from "./BottomNav";
+import { TopNav } from "./TopNav";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -8,8 +9,9 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   return (
-    <div className="min-h-screen pb-24">
-      <main className="max-w-lg mx-auto px-4 py-6">
+    <div className="min-h-screen pb-24 md:pb-10">
+      <TopNav />
+      <main className="mx-auto max-w-lg px-4 py-6 md:max-w-4xl md:px-6 md:py-8 lg:max-w-6xl">
         {children}
       </main>
       <BottomNav />

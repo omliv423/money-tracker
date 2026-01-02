@@ -1,19 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Outfit, Plus_Jakarta_Sans } from "next/font/google";
+import { Space_Grotesk, Noto_Sans_JP } from "next/font/google";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import "./globals.css";
 
-// Modern geometric sans-serif for headings
-const outfit = Outfit({
+// Expressive display sans for headings
+const spaceGrotesk = Space_Grotesk({
   variable: "--font-heading",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
 });
 
-// Clean, friendly body font
-const plusJakarta = Plus_Jakarta_Sans({
+// Highly legible Japanese + Latin body font
+const notoSansJP = Noto_Sans_JP({
   variable: "--font-body",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   weight: ["400", "500", "600", "700"],
 });
 
@@ -48,7 +48,7 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body
-        className={`${outfit.variable} ${plusJakarta.variable} font-body antialiased text-foreground`}
+        className={`${spaceGrotesk.variable} ${notoSansJP.variable} font-body antialiased text-foreground`}
       >
         <AuthProvider>{children}</AuthProvider>
       </body>

@@ -119,7 +119,7 @@ export default function RecurringTransactionsPage() {
         )}
 
         {/* Items List */}
-        <div className="space-y-2">
+        <div className="grid gap-3 md:grid-cols-2">
           <AnimatePresence>
             {items.map((item, index) => (
               <motion.div

@@ -355,216 +355,220 @@ export default function CFReportPage() {
           </button>
         </div>
 
-        {/* Info Banner */}
-        <div className="bg-secondary/50 rounded-xl p-3 text-sm text-muted-foreground text-center">
-          支払日ベースの実際のお金の動き
-        </div>
-
-        {/* Chart Toggle Button */}
-        <button
-          onClick={() => setShowChart(!showChart)}
-          className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
-            showChart
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-card border-border hover:bg-accent"
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          <span className="text-sm">月次推移グラフ</span>
-        </button>
-
-        {/* Bar Chart - 月次推移 */}
-        <AnimatePresence>
-          {showChart && monthlyTrend.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-card rounded-xl p-4 border border-border"
-            >
-              <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
-                過去6ヶ月のキャッシュフロー推移
-              </h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyTrend}>
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      tickFormatter={(value) =>
-                        value >= 10000 || value <= -10000
-                          ? `${(value / 10000).toFixed(0)}万`
-                          : value
-                      }
-                    />
-                    <Tooltip
-                      formatter={(value) =>
-                        `¥${Number(value).toLocaleString("ja-JP")}`
-                      }
-                    />
-                    <Legend
-                      wrapperStyle={{ fontSize: 12 }}
-                      formatter={(value) =>
-                        value === "inflow" ? "入金" : value === "outflow" ? "出金" : "純増減"
-                      }
-                    />
-                    <ReferenceLine y={0} stroke="#666" />
-                    <Bar dataKey="inflow" name="inflow" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="outflow" name="outflow" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-3 gap-2">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card rounded-xl p-3 border border-border"
-          >
-            <div className="flex items-center gap-1 mb-1">
-              <ArrowDownLeft className="w-3 h-3 text-income flex-shrink-0" />
-              <p className="text-xs text-muted-foreground">収入</p>
+        <div className="space-y-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0">
+          <div className="space-y-4 lg:order-2 lg:sticky lg:top-24 lg:self-start">
+            {/* Info Banner */}
+            <div className="bg-secondary/50 rounded-xl p-3 text-sm text-muted-foreground text-center">
+              支払日ベースの実際のお金の動き
             </div>
-            <p className="font-heading text-sm font-bold tabular-nums text-income whitespace-nowrap overflow-hidden">
-              ¥{totalInflow.toLocaleString("ja-JP")}
-            </p>
-          </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="bg-card rounded-xl p-3 border border-border"
-          >
-            <div className="flex items-center gap-1 mb-1">
-              <ArrowUpRight className="w-3 h-3 text-expense flex-shrink-0" />
-              <p className="text-xs text-muted-foreground">支出</p>
-            </div>
-            <p className="font-heading text-sm font-bold tabular-nums text-expense whitespace-nowrap overflow-hidden">
-              ¥{totalOutflow.toLocaleString("ja-JP")}
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-card rounded-xl p-3 border border-border"
-          >
-            <p className="text-xs text-muted-foreground mb-1">純増減</p>
-            <p
-              className={`font-heading text-sm font-bold tabular-nums whitespace-nowrap overflow-hidden ${
-                netCashFlow >= 0 ? "text-income" : "text-expense"
+            {/* Chart Toggle Button */}
+            <button
+              onClick={() => setShowChart(!showChart)}
+              className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+                showChart
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card border-border hover:bg-accent"
               }`}
             >
-              {netCashFlow >= 0 ? "+" : ""}¥{netCashFlow.toLocaleString("ja-JP")}
-            </p>
-          </motion.div>
-        </div>
+              <BarChart3 className="w-4 h-4" />
+              <span className="text-sm">月次推移グラフ</span>
+            </button>
 
-        {/* Cash Flow by Account */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-            <Wallet className="w-4 h-4" />
-            支払い方法別
-            <span className="text-xs">（タップで展開）</span>
-          </h2>
-          {cashFlowByAccount.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4 text-sm">
-              この月の取引なし
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {cashFlowByAccount.map((account, index) => {
-                const isExpanded = expandedAccounts.has(account.accountId);
-                const hasDetails = account.byCategory.length > 0;
-                const netFlow = account.inflow - account.outflow;
+            {/* Bar Chart - 月次推移 */}
+            <AnimatePresence>
+              {showChart && monthlyTrend.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-card rounded-xl p-4 border border-border"
+                >
+                  <h3 className="text-sm font-medium text-muted-foreground mb-4 text-center">
+                    過去6ヶ月のキャッシュフロー推移
+                  </h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlyTrend}>
+                        <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                        <YAxis
+                          tick={{ fontSize: 10 }}
+                          tickFormatter={(value) =>
+                            value >= 10000 || value <= -10000
+                              ? `${(value / 10000).toFixed(0)}万`
+                              : value
+                          }
+                        />
+                        <Tooltip
+                          formatter={(value) =>
+                            `¥${Number(value).toLocaleString("ja-JP")}`
+                          }
+                        />
+                        <Legend
+                          wrapperStyle={{ fontSize: 12 }}
+                          formatter={(value) =>
+                            value === "inflow" ? "入金" : value === "outflow" ? "出金" : "純増減"
+                          }
+                        />
+                        <ReferenceLine y={0} stroke="#666" />
+                        <Bar dataKey="inflow" name="inflow" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="outflow" name="outflow" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-                return (
-                  <div key={account.accountId}>
-                    <motion.div
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.03 }}
-                      onClick={() => hasDetails && toggleExpand(account.accountId)}
-                      className={`bg-card rounded-xl p-4 border border-border ${
-                        hasDetails ? "cursor-pointer hover:bg-accent transition-colors" : ""
-                      }`}
-                    >
-                      <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2">
-                          {hasDetails && (
-                            <motion.div
-                              animate={{ rotate: isExpanded ? 180 : 0 }}
-                              transition={{ duration: 0.2 }}
-                            >
-                              <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                            </motion.div>
+            {/* Summary Cards */}
+            <div className="grid grid-cols-3 gap-2 lg:grid-cols-1 lg:gap-3">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-card rounded-xl p-3 border border-border"
+              >
+                <div className="flex items-center gap-1 mb-1">
+                  <ArrowDownLeft className="w-3 h-3 text-income flex-shrink-0" />
+                  <p className="text-xs text-muted-foreground">収入</p>
+                </div>
+                <p className="font-heading text-sm font-bold tabular-nums text-income whitespace-nowrap overflow-hidden">
+                  ¥{totalInflow.toLocaleString("ja-JP")}
+                </p>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 }}
+                className="bg-card rounded-xl p-3 border border-border"
+              >
+                <div className="flex items-center gap-1 mb-1">
+                  <ArrowUpRight className="w-3 h-3 text-expense flex-shrink-0" />
+                  <p className="text-xs text-muted-foreground">支出</p>
+                </div>
+                <p className="font-heading text-sm font-bold tabular-nums text-expense whitespace-nowrap overflow-hidden">
+                  ¥{totalOutflow.toLocaleString("ja-JP")}
+                </p>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="bg-card rounded-xl p-3 border border-border"
+              >
+                <p className="text-xs text-muted-foreground mb-1">純増減</p>
+                <p
+                  className={`font-heading text-sm font-bold tabular-nums whitespace-nowrap overflow-hidden ${
+                    netCashFlow >= 0 ? "text-income" : "text-expense"
+                  }`}
+                >
+                  {netCashFlow >= 0 ? "+" : ""}¥{netCashFlow.toLocaleString("ja-JP")}
+                </p>
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Cash Flow by Account */}
+          <div className="space-y-4 lg:order-1">
+            <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <Wallet className="w-4 h-4" />
+              支払い方法別
+              <span className="text-xs">（タップで展開）</span>
+            </h2>
+            {cashFlowByAccount.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4 text-sm">
+                この月の取引なし
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {cashFlowByAccount.map((account, index) => {
+                  const isExpanded = expandedAccounts.has(account.accountId);
+                  const hasDetails = account.byCategory.length > 0;
+                  const netFlow = account.inflow - account.outflow;
+
+                  return (
+                    <div key={account.accountId}>
+                      <motion.div
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.03 }}
+                        onClick={() => hasDetails && toggleExpand(account.accountId)}
+                        className={`bg-card rounded-xl p-4 border border-border ${
+                          hasDetails ? "cursor-pointer hover:bg-accent transition-colors" : ""
+                        }`}
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center gap-2">
+                            {hasDetails && (
+                              <motion.div
+                                animate={{ rotate: isExpanded ? 180 : 0 }}
+                                transition={{ duration: 0.2 }}
+                              >
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                              </motion.div>
+                            )}
+                            <span className="font-medium">{account.accountName}</span>
+                            {hasDetails && (
+                              <span className="text-xs text-muted-foreground">
+                                ({account.transactions.length}件)
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={`font-heading font-bold tabular-nums ${
+                              netFlow >= 0 ? "text-income" : "text-expense"
+                            }`}
+                          >
+                            {netFlow >= 0 ? "+" : ""}¥{netFlow.toLocaleString("ja-JP")}
+                          </span>
+                        </div>
+                        <div className="flex gap-4 text-xs text-muted-foreground">
+                          {account.inflow > 0 && (
+                            <span className="text-income">
+                              +¥{account.inflow.toLocaleString("ja-JP")}
+                            </span>
                           )}
-                          <span className="font-medium">{account.accountName}</span>
-                          {hasDetails && (
-                            <span className="text-xs text-muted-foreground">
-                              ({account.transactions.length}件)
+                          {account.outflow > 0 && (
+                            <span className="text-expense">
+                              -¥{account.outflow.toLocaleString("ja-JP")}
                             </span>
                           )}
                         </div>
-                        <span
-                          className={`font-heading font-bold tabular-nums ${
-                            netFlow >= 0 ? "text-income" : "text-expense"
-                          }`}
-                        >
-                          {netFlow >= 0 ? "+" : ""}¥{netFlow.toLocaleString("ja-JP")}
-                        </span>
-                      </div>
-                      <div className="flex gap-4 text-xs text-muted-foreground">
-                        {account.inflow > 0 && (
-                          <span className="text-income">
-                            +¥{account.inflow.toLocaleString("ja-JP")}
-                          </span>
-                        )}
-                        {account.outflow > 0 && (
-                          <span className="text-expense">
-                            -¥{account.outflow.toLocaleString("ja-JP")}
-                          </span>
-                        )}
-                      </div>
-                    </motion.div>
+                      </motion.div>
 
-                    {/* Expanded Category Breakdown */}
-                    <AnimatePresence>
-                      {isExpanded && hasDetails && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="ml-4 mt-2 space-y-2 border-l-2 border-primary/20 pl-4"
-                        >
-                          <p className="text-xs text-muted-foreground">カテゴリ別内訳</p>
-                          {account.byCategory.map((cat) => (
-                            <motion.div
-                              key={cat.categoryId}
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              className="bg-secondary/50 rounded-lg p-3 flex justify-between items-center"
-                            >
-                              <span className="text-sm">{cat.categoryName}</span>
-                              <span className="font-heading font-bold tabular-nums text-sm text-expense">
-                                ¥{cat.amount.toLocaleString("ja-JP")}
-                              </span>
-                            </motion.div>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      {/* Expanded Category Breakdown */}
+                      <AnimatePresence>
+                        {isExpanded && hasDetails && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="ml-4 mt-2 space-y-2 border-l-2 border-primary/20 pl-4"
+                          >
+                            <p className="text-xs text-muted-foreground">カテゴリ別内訳</p>
+                            {account.byCategory.map((cat) => (
+                              <motion.div
+                                key={cat.categoryId}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                className="bg-secondary/50 rounded-lg p-3 flex justify-between items-center"
+                              >
+                                <span className="text-sm">{cat.categoryName}</span>
+                                <span className="font-heading font-bold tabular-nums text-sm text-expense">
+                                  ¥{cat.amount.toLocaleString("ja-JP")}
+                                </span>
+                              </motion.div>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Explanation */}
