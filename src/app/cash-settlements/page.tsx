@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { CreditCard, Check, ChevronDown, ChevronRight, Calendar, Wallet, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { CreditCard, Check, ChevronDown, ChevronRight, Calendar, Wallet, ArrowDownLeft, ArrowUpRight, Undo2 } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -47,14 +47,21 @@ interface AccountGroup {
 export default function CashSettlementsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
+  const [settledAccountGroups, setSettledAccountGroups] = useState<AccountGroup[]>([]);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
   const [isSettling, setIsSettling] = useState(false);
   const [activeTab, setActiveTab] = useState<"payable" | "receivable">("payable");
+  const [statusTab, setStatusTab] = useState<"unsettled" | "settled">("unsettled");
 
   // 現預金口座（消し込み時の入出金先）
   const [cashAccounts, setCashAccounts] = useState<Account[]>([]);
   const [selectedCashAccountId, setSelectedCashAccountId] = useState<string>("");
+
+  // 消し込み日（デフォルトは今日）
+  const [settlementDate, setSettlementDate] = useState<string>(
+    new Date().toISOString().split("T")[0]
+  );
 
   // 一部消し込み用のダイアログ状態
   const [partialSettleDialog, setPartialSettleDialog] = useState<{
@@ -63,12 +70,13 @@ export default function CashSettlementsPage() {
   }>({ open: false, transaction: null });
   const [partialAmount, setPartialAmount] = useState("");
   const [partialCashAccountId, setPartialCashAccountId] = useState<string>("");
+  const [partialSettlementDate, setPartialSettlementDate] = useState<string>("");
 
   const fetchData = async () => {
     setIsLoading(true);
 
-    // Fetch both transactions and cash accounts in parallel
-    const [txResponse, accountsResponse] = await Promise.all([
+    // Fetch both unsettled, settled transactions and cash accounts in parallel
+    const [unsettledResponse, settledResponse, accountsResponse] = await Promise.all([
       supabase
         .from("transactions")
         .select(`
@@ -78,20 +86,35 @@ export default function CashSettlementsPage() {
           description,
           total_amount,
           settled_amount,
-          account:accounts(id, name),
-          transaction_lines(line_type)
+          account:accounts!transactions_account_id_fkey(id, name),
+          transaction_lines(line_type, amount)
         `)
         .eq("is_cash_settled", false)
         .order("date", { ascending: false }),
       supabase
+        .from("transactions")
+        .select(`
+          id,
+          date,
+          payment_date,
+          description,
+          total_amount,
+          settled_amount,
+          account:accounts!transactions_account_id_fkey(id, name),
+          transaction_lines(line_type, amount)
+        `)
+        .eq("is_cash_settled", true)
+        .order("date", { ascending: false })
+        .limit(100),
+      supabase
         .from("accounts")
         .select("*")
         .eq("is_active", true)
-        .not("current_balance", "is", null)
         .order("name"),
     ]);
 
-    const unpaidTransactions = txResponse.data;
+    const unpaidTransactions = unsettledResponse.data;
+    const settledTransactions = settledResponse.data;
 
     // Set cash accounts
     if (accountsResponse.data) {
@@ -102,6 +125,64 @@ export default function CashSettlementsPage() {
       }
     }
 
+    // Helper function to process transactions (for settled - show all)
+    const processTransactions = (transactions: any[]) => {
+      const payableMap = new Map<string, AccountGroup>();
+      const receivableMap = new Map<string, AccountGroup>();
+
+      transactions.forEach((tx: any) => {
+        if (!tx.account) return;
+
+        const accountId = tx.account.id;
+        const accountName = tx.account.name;
+
+        // 金額ベースで未払金か未収金かを判定
+        let totalInflow = 0;  // 収入・負債（入金されるもの）
+        let totalOutflow = 0; // 支出・資産（出金するもの）
+
+        (tx.transaction_lines || []).forEach((line: any) => {
+          if (line.line_type === "income" || line.line_type === "liability") {
+            totalInflow += line.amount || 0;
+          } else if (line.line_type === "expense" || line.line_type === "asset") {
+            totalOutflow += line.amount || 0;
+          }
+        });
+
+        // 入金 > 出金 なら未収金、それ以外は未払金
+        let txType: "payable" | "receivable" = totalInflow > totalOutflow ? "receivable" : "payable";
+
+        const mapKey = `${txType}-${accountId}`;
+        const targetMap = txType === "payable" ? payableMap : receivableMap;
+
+        if (!targetMap.has(mapKey)) {
+          targetMap.set(mapKey, {
+            accountId,
+            accountName,
+            totalAmount: 0,
+            transactions: [],
+            type: txType,
+          });
+        }
+        const group = targetMap.get(mapKey)!;
+        group.totalAmount += tx.total_amount;
+        group.transactions.push({
+          id: tx.id,
+          date: tx.date,
+          payment_date: tx.payment_date,
+          description: tx.description,
+          total_amount: tx.total_amount,
+          settled_amount: tx.settled_amount || 0,
+          type: txType,
+        });
+      });
+
+      return [
+        ...Array.from(payableMap.values()),
+        ...Array.from(receivableMap.values()),
+      ];
+    };
+
+    // Process unsettled transactions (with remaining amount calculation)
     const payableMap = new Map<string, AccountGroup>();
     const receivableMap = new Map<string, AccountGroup>();
 
@@ -111,72 +192,56 @@ export default function CashSettlementsPage() {
       const accountId = tx.account.id;
       const accountName = tx.account.name;
 
-      // 取引タイプを判定（income行があれば未収金、expense行があれば未払金）
-      const hasIncome = (tx.transaction_lines || []).some(
-        (line: any) => line.line_type === "income"
-      );
-      const hasExpense = (tx.transaction_lines || []).some(
-        (line: any) => line.line_type === "expense"
-      );
+      // 金額ベースで未払金か未収金かを判定
+      let totalInflow = 0;  // 収入・負債（入金されるもの）
+      let totalOutflow = 0; // 支出・資産（出金するもの）
 
-      // 未払金として処理
-      if (hasExpense) {
-        const mapKey = `payable-${accountId}`;
-        if (!payableMap.has(mapKey)) {
-          payableMap.set(mapKey, {
-            accountId,
-            accountName,
-            totalAmount: 0,
-            transactions: [],
-            type: "payable",
-          });
+      (tx.transaction_lines || []).forEach((line: any) => {
+        if (line.line_type === "income" || line.line_type === "liability") {
+          totalInflow += line.amount || 0;
+        } else if (line.line_type === "expense" || line.line_type === "asset") {
+          totalOutflow += line.amount || 0;
         }
-        const group = payableMap.get(mapKey)!;
-        const remainingAmount = tx.total_amount - (tx.settled_amount || 0);
-        group.totalAmount += remainingAmount;
-        group.transactions.push({
-          id: tx.id,
-          date: tx.date,
-          payment_date: tx.payment_date,
-          description: tx.description,
-          total_amount: tx.total_amount,
-          settled_amount: tx.settled_amount || 0,
-          type: "payable",
+      });
+
+      // 入金 > 出金 なら未収金、それ以外は未払金
+      let txType: "payable" | "receivable" = totalInflow > totalOutflow ? "receivable" : "payable";
+
+      const mapKey = `${txType}-${accountId}`;
+      const targetMap = txType === "payable" ? payableMap : receivableMap;
+
+      if (!targetMap.has(mapKey)) {
+        targetMap.set(mapKey, {
+          accountId,
+          accountName,
+          totalAmount: 0,
+          transactions: [],
+          type: txType,
         });
       }
-
-      // 未収金として処理
-      if (hasIncome) {
-        const mapKey = `receivable-${accountId}`;
-        if (!receivableMap.has(mapKey)) {
-          receivableMap.set(mapKey, {
-            accountId,
-            accountName,
-            totalAmount: 0,
-            transactions: [],
-            type: "receivable",
-          });
-        }
-        const group = receivableMap.get(mapKey)!;
-        const remainingAmount = tx.total_amount - (tx.settled_amount || 0);
-        group.totalAmount += remainingAmount;
-        group.transactions.push({
-          id: tx.id,
-          date: tx.date,
-          payment_date: tx.payment_date,
-          description: tx.description,
-          total_amount: tx.total_amount,
-          settled_amount: tx.settled_amount || 0,
-          type: "receivable",
-        });
-      }
+      const group = targetMap.get(mapKey)!;
+      const remainingAmount = tx.total_amount - (tx.settled_amount || 0);
+      group.totalAmount += remainingAmount;
+      group.transactions.push({
+        id: tx.id,
+        date: tx.date,
+        payment_date: tx.payment_date,
+        description: tx.description,
+        total_amount: tx.total_amount,
+        settled_amount: tx.settled_amount || 0,
+        type: txType,
+      });
     });
 
-    const allGroups = [
+    const allUnsettledGroups = [
       ...Array.from(payableMap.values()),
       ...Array.from(receivableMap.values()),
     ];
-    setAccountGroups(allGroups);
+    setAccountGroups(allUnsettledGroups);
+
+    // Process settled transactions
+    setSettledAccountGroups(processTransactions(settledTransactions || []));
+
     setIsLoading(false);
   };
 
@@ -242,6 +307,8 @@ export default function CashSettlementsPage() {
           .update({
             settled_amount: tx.total_amount,
             is_cash_settled: true,
+            settlement_account_id: selectedCashAccountId || null,
+            settlement_date: settlementDate,
           })
           .eq("id", id);
       }
@@ -251,7 +318,8 @@ export default function CashSettlementsPage() {
     if (selectedCashAccountId && totalSettleAmount > 0) {
       const selectedAccount = cashAccounts.find((a) => a.id === selectedCashAccountId);
       if (selectedAccount) {
-        const currentBalance = selectedAccount.current_balance || 0;
+        // current_balance がなければ opening_balance を初期値として使用
+        const currentBalance = selectedAccount.current_balance ?? selectedAccount.opening_balance ?? 0;
         // 未払金 → 引き落とし (マイナス), 未収金 → 入金 (プラス)
         const newBalance = activeTab === "payable"
           ? currentBalance - totalSettleAmount
@@ -269,6 +337,15 @@ export default function CashSettlementsPage() {
     fetchData();
   };
 
+  // 一部消し込みダイアログを開く
+  const openPartialSettleDialog = (tx: Transaction, defaultAmount?: number) => {
+    setPartialSettleDialog({ open: true, transaction: tx });
+    setPartialAmount(defaultAmount?.toString() || "");
+    setPartialCashAccountId("");
+    // デフォルトは支払予定日、なければ今日
+    setPartialSettlementDate(tx.payment_date || new Date().toISOString().split("T")[0]);
+  };
+
   // 一部消し込み
   const handlePartialSettle = async () => {
     if (!partialSettleDialog.transaction || !partialAmount) return;
@@ -281,20 +358,24 @@ export default function CashSettlementsPage() {
     // 全額消し込みかどうか判定
     const isFullySettled = newSettledAmount >= tx.total_amount;
 
+    const cashAccountId = partialCashAccountId || selectedCashAccountId;
+
     await supabase
       .from("transactions")
       .update({
         settled_amount: newSettledAmount,
         is_cash_settled: isFullySettled,
+        settlement_account_id: cashAccountId || null,
+        settlement_date: partialSettlementDate || new Date().toISOString().split("T")[0],
       })
       .eq("id", tx.id);
 
     // 現預金口座の残高を更新
-    const cashAccountId = partialCashAccountId || selectedCashAccountId;
     if (cashAccountId && amount > 0) {
       const selectedAccount = cashAccounts.find((a) => a.id === cashAccountId);
       if (selectedAccount) {
-        const currentBalance = selectedAccount.current_balance || 0;
+        // current_balance がなければ opening_balance を初期値として使用
+        const currentBalance = selectedAccount.current_balance ?? selectedAccount.opening_balance ?? 0;
         // 未払金 → 引き落とし (マイナス), 未収金 → 入金 (プラス)
         const newBalance = tx.type === "payable"
           ? currentBalance - amount
@@ -310,12 +391,50 @@ export default function CashSettlementsPage() {
     setPartialSettleDialog({ open: false, transaction: null });
     setPartialAmount("");
     setPartialCashAccountId("");
+    setPartialSettlementDate("");
+    setIsSettling(false);
+    fetchData();
+  };
+
+  // 消し込み取消（単一）
+  const handleUnsettle = async (txId: string) => {
+    setIsSettling(true);
+    await supabase
+      .from("transactions")
+      .update({
+        settled_amount: 0,
+        is_cash_settled: false,
+      })
+      .eq("id", txId);
+    setIsSettling(false);
+    fetchData();
+  };
+
+  // 一括消し込み取消
+  const handleBulkUnsettle = async () => {
+    if (selectedTransactions.size === 0) return;
+
+    setIsSettling(true);
+    const ids = Array.from(selectedTransactions);
+
+    for (const id of ids) {
+      await supabase
+        .from("transactions")
+        .update({
+          settled_amount: 0,
+          is_cash_settled: false,
+        })
+        .eq("id", id);
+    }
+
+    setSelectedTransactions(new Set());
     setIsSettling(false);
     fetchData();
   };
 
   // フィルタリングされたグループ
-  const filteredGroups = accountGroups.filter((g) => g.type === activeTab);
+  const currentGroups = statusTab === "unsettled" ? accountGroups : settledAccountGroups;
+  const filteredGroups = currentGroups.filter((g) => g.type === activeTab);
 
   const selectedTotal = filteredGroups.reduce((sum, group) => {
     return sum + group.transactions
@@ -324,10 +443,10 @@ export default function CashSettlementsPage() {
   }, 0);
 
   // 合計額
-  const totalPayables = accountGroups
+  const totalPayables = currentGroups
     .filter((g) => g.type === "payable")
     .reduce((sum, g) => sum + g.totalAmount, 0);
-  const totalReceivables = accountGroups
+  const totalReceivables = currentGroups
     .filter((g) => g.type === "receivable")
     .reduce((sum, g) => sum + g.totalAmount, 0);
 
@@ -357,7 +476,37 @@ export default function CashSettlementsPage() {
 
         <div className="space-y-6 lg:grid lg:grid-cols-[1.2fr_0.8fr] lg:gap-6 lg:space-y-0">
           <div className="space-y-6">
-            {/* Tab */}
+            {/* Status Tab */}
+            <div className="flex gap-1 bg-muted p-1 rounded-lg">
+              <button
+                onClick={() => {
+                  setStatusTab("unsettled");
+                  setSelectedTransactions(new Set());
+                }}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  statusTab === "unsettled"
+                    ? "bg-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                未消し込み
+              </button>
+              <button
+                onClick={() => {
+                  setStatusTab("settled");
+                  setSelectedTransactions(new Set());
+                }}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  statusTab === "settled"
+                    ? "bg-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                消し込み済み
+              </button>
+            </div>
+
+            {/* Type Tab */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => {
@@ -372,7 +521,7 @@ export default function CashSettlementsPage() {
               >
                 <ArrowDownLeft className="w-4 h-4" />
                 <div className="text-left">
-                  <p className="text-sm font-medium">未払金</p>
+                  <p className="text-sm font-medium">{statusTab === "unsettled" ? "未払金" : "支払済"}</p>
                   <p className={`text-xs ${activeTab === "payable" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                     ¥{totalPayables.toLocaleString("ja-JP")}
                   </p>
@@ -391,7 +540,7 @@ export default function CashSettlementsPage() {
               >
                 <ArrowUpRight className="w-4 h-4" />
                 <div className="text-left">
-                  <p className="text-sm font-medium">未収金</p>
+                  <p className="text-sm font-medium">{statusTab === "unsettled" ? "未収金" : "入金済"}</p>
                   <p className={`text-xs ${activeTab === "receivable" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
                     ¥{totalReceivables.toLocaleString("ja-JP")}
                   </p>
@@ -401,16 +550,30 @@ export default function CashSettlementsPage() {
 
             {filteredGroups.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                {activeTab === "payable" ? (
-                  <>
-                    <CreditCard className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>未払いの取引はありません</p>
-                  </>
+                {statusTab === "unsettled" ? (
+                  activeTab === "payable" ? (
+                    <>
+                      <CreditCard className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>未払いの取引はありません</p>
+                    </>
+                  ) : (
+                    <>
+                      <Wallet className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>未収の取引はありません</p>
+                    </>
+                  )
                 ) : (
-                  <>
-                    <Wallet className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>未収の取引はありません</p>
-                  </>
+                  activeTab === "payable" ? (
+                    <>
+                      <Check className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>支払済の取引はありません</p>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>入金済の取引はありません</p>
+                    </>
+                  )
                 )}
               </div>
             ) : (
@@ -520,26 +683,34 @@ export default function CashSettlementsPage() {
                                         </div>
                                         <div className="text-right">
                                           <span className="font-heading font-bold tabular-nums text-sm">
-                                            ¥{remainingAmount.toLocaleString("ja-JP")}
+                                            ¥{statusTab === "unsettled" ? remainingAmount.toLocaleString("ja-JP") : tx.total_amount.toLocaleString("ja-JP")}
                                           </span>
-                                          {tx.settled_amount > 0 && (
+                                          {statusTab === "unsettled" && tx.settled_amount > 0 && (
                                             <p className="text-xs text-muted-foreground">
                                               消込済: ¥{tx.settled_amount.toLocaleString("ja-JP")}
                                             </p>
                                           )}
                                         </div>
                                       </div>
-                                      {/* 一部消し込みボタン */}
+                                      {/* 一部消し込みボタン / 取消ボタン */}
                                       <div className="mt-2 flex justify-end">
-                                        <button
-                                          onClick={() => {
-                                            setPartialSettleDialog({ open: true, transaction: tx });
-                                            setPartialAmount(remainingAmount.toString());
-                                          }}
-                                          className="text-xs text-primary hover:underline"
-                                        >
-                                          一部消し込み
-                                        </button>
+                                        {statusTab === "unsettled" ? (
+                                          <button
+                                            onClick={() => openPartialSettleDialog(tx, remainingAmount)}
+                                            className="text-xs text-primary hover:underline"
+                                          >
+                                            一部消し込み
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={() => handleUnsettle(tx.id)}
+                                            disabled={isSettling}
+                                            className="text-xs text-destructive hover:underline flex items-center gap-1"
+                                          >
+                                            <Undo2 className="w-3 h-3" />
+                                            消し込み取消
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -553,7 +724,7 @@ export default function CashSettlementsPage() {
                   })}
                 </div>
 
-                {/* Settle Button */}
+                {/* Settle/Unsettle Button */}
                 {selectedTransactions.size > 0 && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -570,45 +741,79 @@ export default function CashSettlementsPage() {
                     </span>
                   </div>
 
-                  {/* Cash Account Selector */}
-                  {cashAccounts.length > 0 && (
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">
-                        {activeTab === "payable" ? "引き落とし口座" : "入金口座"}
-                      </label>
-                      <Select
-                        value={selectedCashAccountId}
-                        onValueChange={setSelectedCashAccountId}
-                      >
-                        <SelectTrigger className="bg-background">
-                          <SelectValue placeholder="口座を選択" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {cashAccounts.map((acc) => (
-                            <SelectItem key={acc.id} value={acc.id}>
-                              {acc.name} (¥{(acc.current_balance || 0).toLocaleString()})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* Cash Account Selector and Date - only for unsettled */}
+                  {statusTab === "unsettled" && (
+                    <>
+                      {cashAccounts.length > 0 && (
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">
+                            {activeTab === "payable" ? "引き落とし口座" : "入金口座"}
+                          </label>
+                          <Select
+                            value={selectedCashAccountId}
+                            onValueChange={setSelectedCashAccountId}
+                          >
+                            <SelectTrigger className="bg-background">
+                              <SelectValue placeholder="口座を選択" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {cashAccounts.map((acc) => (
+                                <SelectItem key={acc.id} value={acc.id}>
+                                  {acc.name} (¥{(acc.current_balance ?? acc.opening_balance ?? 0).toLocaleString()})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          {activeTab === "payable" ? "引き落とし日" : "入金日"}
+                        </label>
+                        <Input
+                          type="date"
+                          value={settlementDate}
+                          onChange={(e) => setSettlementDate(e.target.value)}
+                          className="bg-background"
+                        />
+                      </div>
+                    </>
                   )}
 
-                  <Button
-                    onClick={handleSettle}
-                    disabled={isSettling || (cashAccounts.length > 0 && !selectedCashAccountId)}
-                    className="w-full"
-                    size="lg"
-                  >
-                    {isSettling ? (
-                      "処理中..."
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4 mr-2" />
-                        全額消し込む
-                      </>
-                    )}
-                  </Button>
+                  {statusTab === "unsettled" ? (
+                    <Button
+                      onClick={handleSettle}
+                      disabled={isSettling || (cashAccounts.length > 0 && !selectedCashAccountId)}
+                      className="w-full"
+                      size="lg"
+                    >
+                      {isSettling ? (
+                        "処理中..."
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          全額消し込む
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleBulkUnsettle}
+                      disabled={isSettling}
+                      variant="destructive"
+                      className="w-full"
+                      size="lg"
+                    >
+                      {isSettling ? (
+                        "処理中..."
+                      ) : (
+                        <>
+                          <Undo2 className="w-4 h-4 mr-2" />
+                          消し込み取消
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
                   </motion.div>
                 )}
@@ -643,44 +848,78 @@ export default function CashSettlementsPage() {
                   </span>
                 </div>
 
-                {cashAccounts.length > 0 && (
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      {activeTab === "payable" ? "引き落とし口座" : "入金口座"}
-                    </label>
-                    <Select
-                      value={selectedCashAccountId}
-                      onValueChange={setSelectedCashAccountId}
-                    >
-                      <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="口座を選択" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {cashAccounts.map((acc) => (
-                          <SelectItem key={acc.id} value={acc.id}>
-                            {acc.name} (¥{(acc.current_balance || 0).toLocaleString()})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                {statusTab === "unsettled" && (
+                  <>
+                    {cashAccounts.length > 0 && (
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          {activeTab === "payable" ? "引き落とし口座" : "入金口座"}
+                        </label>
+                        <Select
+                          value={selectedCashAccountId}
+                          onValueChange={setSelectedCashAccountId}
+                        >
+                          <SelectTrigger className="bg-background">
+                            <SelectValue placeholder="口座を選択" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cashAccounts.map((acc) => (
+                              <SelectItem key={acc.id} value={acc.id}>
+                                {acc.name} (¥{(acc.current_balance ?? acc.opening_balance ?? 0).toLocaleString()})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        {activeTab === "payable" ? "引き落とし日" : "入金日"}
+                      </label>
+                      <Input
+                        type="date"
+                        value={settlementDate}
+                        onChange={(e) => setSettlementDate(e.target.value)}
+                        className="bg-background"
+                      />
+                    </div>
+                  </>
                 )}
 
-                <Button
-                  onClick={handleSettle}
-                  disabled={isSettling || (cashAccounts.length > 0 && !selectedCashAccountId)}
-                  className="w-full"
-                  size="lg"
-                >
-                  {isSettling ? (
-                    "処理中..."
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4 mr-2" />
-                      全額消し込む
-                    </>
-                  )}
-                </Button>
+                {statusTab === "unsettled" ? (
+                  <Button
+                    onClick={handleSettle}
+                    disabled={isSettling || (cashAccounts.length > 0 && !selectedCashAccountId)}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {isSettling ? (
+                      "処理中..."
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        全額消し込む
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleBulkUnsettle}
+                    disabled={isSettling}
+                    variant="destructive"
+                    className="w-full"
+                    size="lg"
+                  >
+                    {isSettling ? (
+                      "処理中..."
+                    ) : (
+                      <>
+                        <Undo2 className="w-4 h-4 mr-2" />
+                        消し込み取消
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -735,7 +974,7 @@ export default function CashSettlementsPage() {
                     <SelectContent>
                       {cashAccounts.map((acc) => (
                         <SelectItem key={acc.id} value={acc.id}>
-                          {acc.name} (¥{(acc.current_balance || 0).toLocaleString()})
+                          {acc.name} (¥{(acc.current_balance ?? acc.opening_balance ?? 0).toLocaleString()})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -743,16 +982,25 @@ export default function CashSettlementsPage() {
                 </div>
               )}
               <div>
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  {partialSettleDialog.transaction.type === "payable" ? "引き落とし日" : "入金日"}
+                </label>
+                <Input
+                  type="date"
+                  value={partialSettlementDate}
+                  onChange={(e) => setPartialSettlementDate(e.target.value)}
+                />
+              </div>
+              <div>
                 <label className="text-sm text-muted-foreground mb-1 block">消し込み金額</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">¥</span>
+                  <input
+                    type="number"
                     placeholder="0"
                     value={partialAmount}
                     onChange={(e) => setPartialAmount(e.target.value.replace(/[^0-9]/g, ""))}
-                    className="pl-7"
+                    className="h-10 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   />
                 </div>
               </div>

@@ -103,7 +103,7 @@ export default function TransactionDetailPage({
             total_amount,
             account_id,
             created_at,
-            account:accounts(id, name),
+            account:accounts!transactions_account_id_fkey(id, name),
             transaction_lines(
               id,
               amount,
@@ -248,7 +248,7 @@ export default function TransactionDetailPage({
           total_amount,
           account_id,
           created_at,
-          account:accounts(id, name),
+          account:accounts!transactions_account_id_fkey(id, name),
           transaction_lines(
             id,
             amount,
@@ -528,17 +528,16 @@ export default function TransactionDetailPage({
                       <div>
                         <label className="text-xs text-muted-foreground">金額</label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">¥</span>
-                          <Input
-                            type="text"
-                            inputMode="numeric"
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">¥</span>
+                          <input
+                            type="number"
                             value={line.amount || ""}
                             onChange={(e) =>
                               handleUpdateLine(index, {
                                 amount: parseInt(e.target.value.replace(/[^0-9]/g, ""), 10) || 0,
                               })
                             }
-                            className="pl-7"
+                            className="h-10 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                           />
                         </div>
                       </div>

@@ -62,7 +62,7 @@ export default function AccountsSettingsPage() {
   const [newType, setNewType] = useState("bank");
   const [newOwner, setNewOwner] = useState("self");
   const [newOpeningBalance, setNewOpeningBalance] = useState("");
-  const [newBalanceDate, setNewBalanceDate] = useState("");
+  const [newOpeningDate, setNewOpeningDate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   // Edit form state
@@ -70,11 +70,12 @@ export default function AccountsSettingsPage() {
   const [editType, setEditType] = useState("");
   const [editOwner, setEditOwner] = useState("");
   const [editOpeningBalance, setEditOpeningBalance] = useState("");
-  const [editBalanceDate, setEditBalanceDate] = useState("");
+  const [editOpeningDate, setEditOpeningDate] = useState("");
+  const [editCurrentBalance, setEditCurrentBalance] = useState("");
 
   const fetchAccounts = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("accounts")
       .select("*")
       .order("name");
@@ -93,20 +94,22 @@ export default function AccountsSettingsPage() {
     if (!newName.trim()) return;
 
     setIsSaving(true);
+    const openingBalanceValue = newOpeningBalance ? parseInt(newOpeningBalance) : 0;
     await supabase.from("accounts").insert({
       user_id: user?.id,
       name: newName.trim(),
       type: newType,
       owner: newOwner,
-      opening_balance: newOpeningBalance ? parseInt(newOpeningBalance) : 0,
-      balance_date: newBalanceDate || null,
+      opening_balance: openingBalanceValue,
+      current_balance: openingBalanceValue,
+      opening_date: newOpeningDate || null,
     });
 
     setNewName("");
     setNewType("bank");
     setNewOwner("self");
     setNewOpeningBalance("");
-    setNewBalanceDate("");
+    setNewOpeningDate("");
     setShowAddDialog(false);
     setIsSaving(false);
     fetchAccounts();
@@ -118,7 +121,8 @@ export default function AccountsSettingsPage() {
     setEditType(account.type);
     setEditOwner(account.owner);
     setEditOpeningBalance(account.opening_balance?.toString() || "0");
-    setEditBalanceDate(account.balance_date || "");
+    setEditOpeningDate((account as any).opening_date || "");
+    setEditCurrentBalance(account.current_balance?.toString() || "");
   };
 
   const handleSaveEdit = async () => {
@@ -132,7 +136,8 @@ export default function AccountsSettingsPage() {
         type: editType,
         owner: editOwner,
         opening_balance: editOpeningBalance ? parseInt(editOpeningBalance) : 0,
-        balance_date: editBalanceDate || null,
+        current_balance: editCurrentBalance !== "" ? parseInt(editCurrentBalance) : null,
+        opening_date: editOpeningDate || null,
       })
       .eq("id", editAccount.id);
 
@@ -222,14 +227,9 @@ export default function AccountsSettingsPage() {
                           <span className="text-primary">(共同)</span>
                         )}
                       </div>
-                      {account.opening_balance !== 0 && (
-                        <p className="text-xs text-income mt-1">
-                          残高: ¥{account.opening_balance?.toLocaleString("ja-JP")}
-                          {account.balance_date && (
-                            <span className="text-muted-foreground ml-1">
-                              ({account.balance_date})
-                            </span>
-                          )}
+                      {(account.current_balance ?? 0) !== 0 && (
+                        <p className={`text-xs mt-1 ${(account.current_balance ?? 0) < 0 ? "text-destructive" : "text-income"}`}>
+                          残高: ¥{account.current_balance?.toLocaleString("ja-JP")}
                         </p>
                       )}
                     </div>
@@ -314,12 +314,15 @@ export default function AccountsSettingsPage() {
               />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">残高基準日（任意）</label>
+              <label className="text-sm text-muted-foreground mb-1 block">開始日（任意）</label>
               <Input
                 type="date"
-                value={newBalanceDate}
-                onChange={(e) => setNewBalanceDate(e.target.value)}
+                value={newOpeningDate}
+                onChange={(e) => setNewOpeningDate(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                この日付より前の取引は残高計算に含まれません
+              </p>
             </div>
             <Button
               onClick={handleAdd}
@@ -385,17 +388,31 @@ export default function AccountsSettingsPage() {
                 value={editOpeningBalance}
                 onChange={(e) => setEditOpeningBalance(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                BSの現預金に表示されます
-              </p>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-1 block">残高基準日</label>
+              <label className="text-sm text-muted-foreground mb-1 block">開始日</label>
               <Input
                 type="date"
-                value={editBalanceDate}
-                onChange={(e) => setEditBalanceDate(e.target.value)}
+                value={editOpeningDate}
+                onChange={(e) => setEditOpeningDate(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                この日付より前の取引は残高計算に含まれません
+              </p>
+            </div>
+            {/* 現在残高 */}
+            <div className="border-t border-border pt-4">
+              <label className="text-sm text-muted-foreground mb-1 block">現在残高</label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={editCurrentBalance}
+                onChange={(e) => setEditCurrentBalance(e.target.value)}
+                className={parseInt(editCurrentBalance || "0") < 0 ? "border-destructive" : ""}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                消し込みで自動更新。手動で修正も可能
+              </p>
             </div>
             <Button
               onClick={handleSaveEdit}

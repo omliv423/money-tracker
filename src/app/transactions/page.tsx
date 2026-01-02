@@ -113,7 +113,7 @@ function TransactionsContent() {
           description,
           total_amount,
           account_id,
-          account:accounts(name),
+          account:accounts!transactions_account_id_fkey(name),
           transaction_lines(amount, line_type, category_id)
         `)
         .order("date", { ascending: false })

@@ -97,16 +97,15 @@ export function TransactionLineItem({
         <div className="flex-1">
           <label className="text-xs text-muted-foreground mb-1 block">金額</label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
-            <Input
-              type="text"
-              inputMode="numeric"
-              value={isAmountFocused ? amountInput : (line.amount > 0 ? line.amount.toLocaleString("ja-JP") : "")}
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">¥</span>
+            <input
+              type="number"
+              value={isAmountFocused ? amountInput : (line.amount > 0 ? line.amount : "")}
               onChange={handleAmountChange}
               onFocus={handleAmountFocus}
               onBlur={handleAmountBlur}
               placeholder="0"
-              className="pl-7 tabular-nums text-right"
+              className="h-10 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm tabular-nums text-right ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
           </div>
         </div>

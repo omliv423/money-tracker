@@ -60,12 +60,26 @@ interface CounterpartyBalance {
   lines: UnsettledLine[];
 }
 
+interface SettlementItem {
+  id: string;
+  amount: number;
+  transaction_line: {
+    id: string;
+    amount: number;
+    transaction: {
+      date: string;
+      description: string;
+    } | null;
+  } | null;
+}
+
 interface Settlement {
   id: string;
   date: string;
   counterparty: string;
   amount: number;
   note: string | null;
+  settlement_items?: SettlementItem[];
 }
 
 export default function SettlementsPage() {
@@ -75,6 +89,7 @@ export default function SettlementsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [cashAccounts, setCashAccounts] = useState<Account[]>([]);
   const [expandedCounterparty, setExpandedCounterparty] = useState<string | null>(null);
+  const [expandedSettlement, setExpandedSettlement] = useState<string | null>(null);
 
   // Dialog states
   const [showSettlementDialog, setShowSettlementDialog] = useState(false);
@@ -170,15 +185,26 @@ export default function SettlementsPage() {
       setBalances(balanceList.sort((a, b) => b.totalAmount - a.totalAmount));
     }
 
-    // 精算履歴を取得
+    // 精算履歴を取得（内訳を含む）
     const { data: settlementData } = await supabase
       .from("settlements")
-      .select("*")
+      .select(`
+        *,
+        settlement_items(
+          id,
+          amount,
+          transaction_line:transaction_lines(
+            id,
+            amount,
+            transaction:transactions(date, description)
+          )
+        )
+      `)
       .order("date", { ascending: false })
       .limit(20);
 
     if (settlementData) {
-      setSettlements(settlementData);
+      setSettlements(settlementData as Settlement[]);
     }
 
     setIsLoading(false);
@@ -232,13 +258,21 @@ export default function SettlementsPage() {
     } else {
       // 新規作成モード
       // 精算を記録
-      await supabase.from("settlements").insert({
-        user_id: user?.id,
-        date: settlementDate,
-        counterparty: selectedCounterparty,
-        amount: signedAmount,
-        note: settlementNote || null,
-      });
+      const { data: newSettlement, error: settlementError } = await supabase
+        .from("settlements")
+        .insert({
+          user_id: user?.id,
+          date: settlementDate,
+          counterparty: selectedCounterparty,
+          amount: signedAmount,
+          note: settlementNote || null,
+        })
+        .select()
+        .single();
+
+      if (settlementError) {
+        console.error("Settlement insert error:", settlementError);
+      }
 
       // 該当する未精算の立替を部分精算する
       // 古い順に精算していく
@@ -250,6 +284,7 @@ export default function SettlementsPage() {
 
       if (allCounterpartyLines && allCounterpartyLines.length > 0) {
         let remainingSettlement = amount;
+        const settlementItems: { settlement_id: string; transaction_line_id: string; amount: number }[] = [];
 
         for (const line of allCounterpartyLines) {
           // 未精算金額を計算
@@ -279,17 +314,32 @@ export default function SettlementsPage() {
             })
             .eq("id", line.id);
 
+          // 精算内訳を記録
+          if (newSettlement) {
+            settlementItems.push({
+              settlement_id: newSettlement.id,
+              transaction_line_id: line.id,
+              amount: toSettle,
+            });
+          }
+
           remainingSettlement -= toSettle;
           if (remainingSettlement <= 0) break;
         }
+
+        // 精算内訳をまとめてinsert
+        if (settlementItems.length > 0) {
+          await supabase.from("settlement_items").insert(settlementItems);
+        }
       }
 
-      // 現預金口座の残高を更新（新規作成時のみ）
+      // 現預金口座の残高を更新（BSに反映）
+      // 注: 立替/借入の精算はP&Lに影響しないため、収入/支出トランザクションは作成しない
       if (selectedAccountId && amount > 0) {
         const selectedAccount = cashAccounts.find((a) => a.id === selectedAccountId);
         if (selectedAccount) {
-          // current_balanceがnullの場合は0として扱う
-          const currentBalance = selectedAccount.current_balance ?? 0;
+          // current_balanceがnullの場合はopening_balanceを使用
+          const currentBalance = selectedAccount.current_balance ?? selectedAccount.opening_balance ?? 0;
           // receive = 受け取り（プラス）, pay = 支払い（マイナス）
           const newBalance = settlementType === "receive"
             ? currentBalance + amount
@@ -461,39 +511,91 @@ export default function SettlementsPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {settlements.map((settlement) => (
-                    <div
-                      key={settlement.id}
-                      className="bg-card rounded-xl p-4 border border-border flex items-center justify-between"
-                    >
-                      <div>
-                        <p className="font-medium">{settlement.counterparty}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(settlement.date), "yyyy/M/d", { locale: ja })}
-                          {settlement.note && ` - ${settlement.note}`}
-                        </p>
+                  {settlements.map((settlement) => {
+                    const isExpanded = expandedSettlement === settlement.id;
+                    const hasItems = settlement.settlement_items && settlement.settlement_items.length > 0;
+                    return (
+                      <div
+                        key={settlement.id}
+                        className="bg-card rounded-xl border border-border overflow-hidden"
+                      >
+                        <div className="p-4 flex items-center justify-between">
+                          <button
+                            onClick={() => hasItems && setExpandedSettlement(isExpanded ? null : settlement.id)}
+                            className={`flex-1 text-left ${hasItems ? 'cursor-pointer' : 'cursor-default'}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{settlement.counterparty}</p>
+                              {hasItems && (
+                                isExpanded ? (
+                                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                )
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {format(new Date(settlement.date), "yyyy/M/d", { locale: ja })}
+                              {settlement.note && ` - ${settlement.note}`}
+                              {hasItems && ` (${settlement.settlement_items!.length}件)`}
+                            </p>
+                          </button>
+                          <div className="flex items-center gap-3">
+                            <span className={`font-heading font-bold tabular-nums ${
+                              settlement.amount > 0 ? "text-income" : "text-expense"
+                            }`}>
+                              {settlement.amount > 0 ? "+" : ""}¥{Math.abs(settlement.amount).toLocaleString("ja-JP")}
+                            </span>
+                            <button
+                              onClick={() => handleEditSettlement(settlement)}
+                              className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                            >
+                              <Pencil className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteId(settlement.id)}
+                              className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </div>
+                        </div>
+                        {/* 内訳 */}
+                        <AnimatePresence>
+                          {isExpanded && hasItems && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="border-t border-border"
+                            >
+                              <div className="p-3 space-y-2 bg-secondary/30">
+                                {settlement.settlement_items!.map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-center justify-between text-sm py-1"
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <p className="truncate">
+                                        {item.transaction_line?.transaction?.description || "不明"}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {item.transaction_line?.transaction?.date || ""}
+                                      </p>
+                                    </div>
+                                    <span className="font-mono text-right ml-2">
+                                      ¥{item.amount.toLocaleString()}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`font-heading font-bold tabular-nums ${
-                          settlement.amount > 0 ? "text-income" : "text-expense"
-                        }`}>
-                          {settlement.amount > 0 ? "+" : ""}¥{Math.abs(settlement.amount).toLocaleString("ja-JP")}
-                        </span>
-                        <button
-                          onClick={() => handleEditSettlement(settlement)}
-                          className="p-1.5 hover:bg-secondary rounded-md transition-colors"
-                        >
-                          <Pencil className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteId(settlement.id)}
-                          className="p-1.5 hover:bg-secondary rounded-md transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -559,14 +661,13 @@ export default function SettlementsPage() {
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">金額</label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
-                <Input
-                  type="text"
-                  inputMode="numeric"
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">¥</span>
+                <input
+                  type="number"
                   placeholder="0"
                   value={settlementAmount}
                   onChange={(e) => setSettlementAmount(e.target.value.replace(/[^0-9]/g, ""))}
-                  className="pl-7"
+                  className="h-10 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
               </div>
             </div>
@@ -588,11 +689,9 @@ export default function SettlementsPage() {
                     {cashAccounts.map((acc) => (
                       <SelectItem key={acc.id} value={acc.id}>
                         {acc.name}
-                        {acc.current_balance !== null && (
-                          <span className="text-muted-foreground ml-2">
-                            (¥{acc.current_balance.toLocaleString()})
-                          </span>
-                        )}
+                        <span className="text-muted-foreground ml-2">
+                          (¥{(acc.current_balance ?? acc.opening_balance ?? 0).toLocaleString()})
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -120,8 +120,12 @@ export function TransactionForm() {
     .filter((line) => line.lineType === "liability")
     .reduce((sum, line) => sum + line.amount, 0);
 
-  // Determine if this is primarily an income transaction (for UI labels)
-  const isIncomeTransaction = incomeAmount > expenseAmount;
+  // Determine if this is primarily an income/inflow transaction (for UI labels)
+  // Income and Liability (借入) both represent money coming in
+  // Expense and Asset (立替) both represent money going out
+  const inflowAmount = incomeAmount + liabilityAmount;
+  const outflowAmount = expenseAmount + assetAmount;
+  const isIncomeTransaction = inflowAmount > outflowAmount;
 
   // Calculate allocated amount based on transaction type
   // 支出取引: expense + asset（立替）- income - liability = 合計金額

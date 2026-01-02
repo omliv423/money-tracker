@@ -158,17 +158,19 @@ export default function TransferPage() {
       });
 
       // Update account balances
-      if (fromAccount?.current_balance !== null && fromAccount?.current_balance !== undefined) {
+      if (fromAccount) {
+        const fromBalance = fromAccount.current_balance ?? fromAccount.opening_balance ?? 0;
         await supabase
           .from("accounts")
-          .update({ current_balance: fromAccount.current_balance - transferAmount - feeAmount })
+          .update({ current_balance: fromBalance - transferAmount - feeAmount })
           .eq("id", fromAccountId);
       }
 
-      if (toAccount?.current_balance !== null && toAccount?.current_balance !== undefined) {
+      if (toAccount) {
+        const toBalance = toAccount.current_balance ?? toAccount.opening_balance ?? 0;
         await supabase
           .from("accounts")
-          .update({ current_balance: toAccount.current_balance + transferAmount })
+          .update({ current_balance: toBalance + transferAmount })
           .eq("id", toAccountId);
       }
 
@@ -275,11 +277,14 @@ export default function TransferPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {fromAccountId && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    残高: ¥{(accounts.find((a) => a.id === fromAccountId)?.current_balance || 0).toLocaleString()}
-                  </p>
-                )}
+                {fromAccountId && (() => {
+                  const acc = accounts.find((a) => a.id === fromAccountId);
+                  return (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      残高: ¥{(acc?.current_balance ?? acc?.opening_balance ?? 0).toLocaleString()}
+                    </p>
+                  );
+                })()}
               </div>
 
               {/* Arrow */}
@@ -303,11 +308,14 @@ export default function TransferPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {toAccountId && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    残高: ¥{(accounts.find((a) => a.id === toAccountId)?.current_balance || 0).toLocaleString()}
-                  </p>
-                )}
+                {toAccountId && (() => {
+                  const acc = accounts.find((a) => a.id === toAccountId);
+                  return (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      残高: ¥{(acc?.current_balance ?? acc?.opening_balance ?? 0).toLocaleString()}
+                    </p>
+                  );
+                })()}
               </div>
             </div>
 
@@ -322,14 +330,13 @@ export default function TransferPage() {
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">移動金額</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
-              <Input
-                type="text"
-                inputMode="numeric"
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">¥</span>
+              <input
+                type="number"
                 placeholder="0"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
-                className="pl-7 text-lg font-bold"
+                onChange={(e) => setAmount(e.target.value)}
+                className="h-11 w-full rounded-2xl border border-input bg-card/80 pl-8 pr-4 py-2 text-lg font-bold shadow-soft backdrop-blur-sm outline-none focus-visible:border-primary focus-visible:ring-primary/30 focus-visible:ring-[3px]"
               />
             </div>
           </div>
@@ -338,14 +345,13 @@ export default function TransferPage() {
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">振込手数料（任意）</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
-              <Input
-                type="text"
-                inputMode="numeric"
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">¥</span>
+              <input
+                type="number"
                 placeholder="0"
                 value={fee}
-                onChange={(e) => setFee(e.target.value.replace(/[^0-9]/g, ""))}
-                className="pl-7"
+                onChange={(e) => setFee(e.target.value)}
+                className="h-11 w-full rounded-2xl border border-input bg-card/80 pl-8 pr-4 py-2 text-base shadow-soft backdrop-blur-sm outline-none focus-visible:border-primary focus-visible:ring-primary/30 focus-visible:ring-[3px]"
               />
             </div>
           </div>

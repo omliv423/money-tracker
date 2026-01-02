@@ -104,7 +104,7 @@ export default function CFReportPage() {
             payment_date,
             description,
             total_amount,
-            account:accounts(id, name),
+            account:accounts!transactions_account_id_fkey(id, name),
             counterparty:counterparties(id, name),
             transaction_lines(amount, line_type, category:categories(id, name, parent_id, type))
           `)

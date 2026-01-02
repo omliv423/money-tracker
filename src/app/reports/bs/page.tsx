@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, Tag, PieChart as PieChartIcon, Landmark, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, ChevronLeft, Tag, PieChart as PieChartIcon, Landmark, TrendingUp, TrendingDown } from "lucide-react";
 import { supabase, type Tables } from "@/lib/supabase";
 import {
   PieChart,
@@ -30,10 +30,23 @@ const COLORS = {
 type Account = Tables<"accounts">;
 type BalanceItem = Tables<"balance_items">;
 
+interface CashTransaction {
+  id: string;
+  date: string;
+  description: string;
+  income: number;
+  expense: number;
+}
+
 interface CashBalance {
   accountId: string;
   accountName: string;
   balance: number;
+  openingBalance: number;  // 口座の初期残高
+  monthStartBalance: number;  // 月初残高（前月末残高）
+  totalIncome: number;  // 当月の収入
+  totalExpense: number;  // 当月の支出
+  transactions: CashTransaction[];  // 当月の取引
   type: string;
 }
 
@@ -77,11 +90,50 @@ export default function BSReportPage() {
   const [assetItems, setAssetItems] = useState<BalanceItem[]>([]);
   const [liabilityItems, setLiabilityItems] = useState<BalanceItem[]>([]);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+  const [expandedCashAccounts, setExpandedCashAccounts] = useState<Set<string>>(new Set());
   const [showChart, setShowChart] = useState(false);
+
+  // 月選択
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const handlePrevMonth = () => {
+    const [year, month] = selectedMonth.split("-").map(Number);
+    const prevDate = new Date(year, month - 2, 1);
+    setSelectedMonth(
+      `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`
+    );
+  };
+
+  const handleNextMonth = () => {
+    const [year, month] = selectedMonth.split("-").map(Number);
+    const nextDate = new Date(year, month, 1);
+    setSelectedMonth(
+      `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`
+    );
+  };
+
+  const formatMonthDisplay = (monthStr: string) => {
+    const [year, month] = monthStr.split("-").map(Number);
+    return `${year}年${month}月`;
+  };
+
+  // 月の開始日と終了日を取得
+  const getMonthRange = (monthStr: string) => {
+    const [year, month] = monthStr.split("-").map(Number);
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate = new Date(year, month, 0); // 月末
+    const endDateStr = `${year}-${String(month).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
+    return { startDate, endDate: endDateStr };
+  };
 
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
+
+      const { startDate, endDate } = getMonthRange(selectedMonth);
 
       // Fetch accounts
       const { data: accountData } = await supabase
@@ -90,18 +142,171 @@ export default function BSReportPage() {
         .eq("is_active", true)
         .order("name");
 
+      // Fetch ALL transactions to calculate balances
+      // is_cash_settled = true または settlement_account_id が設定済みの取引を取得
+      const { data: allTransactions } = await supabase
+        .from("transactions")
+        .select(`
+          id,
+          date,
+          description,
+          total_amount,
+          settled_amount,
+          account_id,
+          is_cash_settled,
+          settlement_account_id,
+          settlement_date,
+          payment_date,
+          transaction_lines(amount, line_type)
+        `)
+        .order("date", { ascending: true });
+
+      // 消し込み済み または 部分消し込みの取引をフィルタ
+      const settledTransactions = (allTransactions || []).filter((tx: any) =>
+        tx.is_cash_settled === true ||
+        (tx.settlement_account_id && (tx.settled_amount || 0) > 0)
+      );
+
       if (accountData) {
         setAccounts(accountData);
 
-        // 現預金（opening_balance が設定されている口座）
+        // 口座ごとの残高と取引履歴を計算
+        // current_balanceを基準に、選択月の残高を逆算する
+        const accountDataMap = new Map<string, {
+          openingBalance: number;
+          openingDate: string | null;  // 開始日（これより前の取引は無視）
+          currentBalance: number;    // DBのcurrent_balance
+          monthStartBalance: number;  // 月初残高
+          monthEndBalance: number;    // 月末残高
+          monthIncome: number;        // 当月の収入
+          monthExpense: number;       // 当月の支出
+          monthTransactions: CashTransaction[];  // 当月の取引
+        }>();
+
+        // current_balanceを基準に初期化
+        accountData.forEach((acc) => {
+          const currentBal = acc.current_balance ?? acc.opening_balance ?? 0;
+          accountDataMap.set(acc.id, {
+            openingBalance: acc.opening_balance ?? 0,
+            openingDate: (acc as any).opening_date || null,  // 開始日
+            currentBalance: currentBal,
+            monthStartBalance: currentBal,
+            monthEndBalance: currentBal,
+            monthIncome: 0,
+            monthExpense: 0,
+            monthTransactions: [],
+          });
+        });
+
+        // 取引を処理して月別の変動を計算
+        (settledTransactions || []).forEach((tx: any) => {
+          const targetAccountId = tx.settlement_account_id || tx.account_id;
+          if (!targetAccountId) return;
+
+          const accData = accountDataMap.get(targetAccountId);
+          if (!accData) return;
+
+          // opening_dateより前の取引は無視（opening_balanceに含まれている）
+          // 現金の移動日 = settlement_date > payment_date > date の優先順位
+          const effectiveDate = tx.settlement_date || tx.payment_date || tx.date;
+          if (accData.openingDate && effectiveDate < accData.openingDate) return;
+
+          let totalInflow = 0;
+          let totalOutflow = 0;
+
+          (tx.transaction_lines || []).forEach((line: any) => {
+            if (line.line_type === "income" || line.line_type === "liability") {
+              totalInflow += line.amount || 0;
+            } else if (line.line_type === "expense" || line.line_type === "asset") {
+              totalOutflow += line.amount || 0;
+            }
+          });
+
+          if (totalInflow === 0 && totalOutflow === 0) return;
+
+          let netChange: number;
+          if (tx.settlement_account_id) {
+            const settleAmount = tx.is_cash_settled ? tx.total_amount : (tx.settled_amount || 0);
+            netChange = totalInflow > totalOutflow ? settleAmount : -settleAmount;
+          } else {
+            netChange = totalInflow - totalOutflow;
+          }
+
+          // 選択月より後の取引 → current_balanceから引く（逆算）
+          if (effectiveDate > endDate) {
+            accData.monthEndBalance -= netChange;
+            accData.monthStartBalance -= netChange;
+          }
+          // 選択月内の取引 → 当月の変動として記録
+          else if (effectiveDate >= startDate && effectiveDate <= endDate) {
+            accData.monthStartBalance -= netChange;  // 月初は月末から当月分を引く
+            if (netChange > 0) {
+              accData.monthIncome += netChange;
+            } else {
+              accData.monthExpense += Math.abs(netChange);
+            }
+            accData.monthTransactions.push({
+              id: tx.id,
+              date: effectiveDate,
+              description: tx.description,
+              income: netChange > 0 ? netChange : 0,
+              expense: netChange < 0 ? Math.abs(netChange) : 0,
+            });
+          }
+          // 選択月より前の取引 → 月末残高には既に含まれている（何もしない）
+        });
+
+        // opening_dateを考慮した調整
+        accountDataMap.forEach((accData, accId) => {
+          if (!accData.openingDate) return;
+
+          // 選択月の月末がopening_dateより前の場合、この口座は表示しない
+          if (endDate < accData.openingDate) {
+            accData.monthEndBalance = accData.openingBalance;
+            accData.monthStartBalance = accData.openingBalance;
+            accData.monthTransactions = [];
+            accData.monthIncome = 0;
+            accData.monthExpense = 0;
+            return;
+          }
+
+          // 選択月がopening_dateを含む場合（月初 <= opening_date <= 月末）
+          // opening_balanceから順方向に計算する
+          if (startDate <= accData.openingDate && accData.openingDate <= endDate) {
+            accData.monthStartBalance = accData.openingBalance;
+            // 月末残高 = 開始残高 + 当月の収入 - 当月の支出
+            accData.monthEndBalance = accData.openingBalance + accData.monthIncome - accData.monthExpense;
+          }
+          // 選択月がopening_dateより後の場合（通常の逆算ロジック）
+          else if (startDate > accData.openingDate) {
+            // monthStartBalance, monthEndBalanceは逆算済みなのでそのまま
+          }
+          // 選択月の月初がopening_dateと同じ場合
+          else if (startDate <= accData.openingDate) {
+            accData.monthStartBalance = accData.openingBalance;
+          }
+        });
+
+        // 現預金リストを作成
         const cashList: CashBalance[] = accountData
-          .filter((acc) => acc.opening_balance !== null && acc.opening_balance !== 0)
-          .map((acc) => ({
-            accountId: acc.id,
-            accountName: acc.name,
-            balance: acc.opening_balance || 0,
-            type: acc.type,
-          }))
+          .filter((acc) => {
+            const accData = accountDataMap.get(acc.id);
+            return accData && (accData.monthEndBalance !== 0 || accData.openingBalance !== 0);
+          })
+          .map((acc) => {
+            const accData = accountDataMap.get(acc.id)!;
+            return {
+              accountId: acc.id,
+              accountName: acc.name,
+              balance: accData.monthEndBalance,
+              openingBalance: accData.openingBalance,
+              monthStartBalance: accData.monthStartBalance,
+              totalIncome: accData.monthIncome,
+              totalExpense: accData.monthExpense,
+              transactions: accData.monthTransactions,
+              type: acc.type,
+            };
+          })
           .sort((a, b) => b.balance - a.balance);
         setCashBalances(cashList);
       }
@@ -115,7 +320,7 @@ export default function BSReportPage() {
           total_amount,
           settled_amount,
           account_id,
-          account:accounts(id, name),
+          account:accounts!transactions_account_id_fkey(id, name),
           transaction_lines(
             amount,
             line_type,
@@ -136,16 +341,22 @@ export default function BSReportPage() {
 
         // 入金と出金の合計を計算してネット金額で判定
         // 入金 = income + liability (借入)
-        // 出金 = expense + asset (立替含む)
+        // 出金 = expense のみ（assetは立替金として別管理されるので除外）
         let totalInflow = 0;
-        let totalOutflow = 0;
+        let totalExpense = 0;
+        let totalAsset = 0;
         (tx.transaction_lines || []).forEach((line: any) => {
           if (line.line_type === "income" || line.line_type === "liability") {
             totalInflow += line.amount;
-          } else if (line.line_type === "expense" || line.line_type === "asset") {
-            totalOutflow += line.amount;
+          } else if (line.line_type === "expense") {
+            totalExpense += line.amount;
+          } else if (line.line_type === "asset") {
+            totalAsset += line.amount;
           }
         });
+
+        // 純粋な立替のみの取引は未払金から除外（立替金セクションで表示）
+        const totalOutflow = totalExpense;
 
         // 一部消し込み対応：残額を計算
         const remainingAmount = tx.total_amount - (tx.settled_amount || 0);
@@ -185,13 +396,13 @@ export default function BSReportPage() {
           payable.totalAmount += remainingAmount;
           payable.transactionCount += 1;
 
-          // カテゴリ別内訳（expense/asset両方を含む）
+          // カテゴリ別内訳（expenseのみ、assetは立替金セクションで表示）
           (tx.transaction_lines || []).forEach((line: any) => {
-            // income/liabilityは除外
-            if (line.line_type !== "expense" && line.line_type !== "asset") return;
+            // expense以外は除外（assetは立替金として別管理）
+            if (line.line_type !== "expense") return;
 
-            const categoryId = line.category?.id || `${line.line_type}-uncategorized`;
-            const categoryName = line.category?.name || (line.line_type === "asset" ? "立替金" : "未分類");
+            const categoryId = line.category?.id || "expense-uncategorized";
+            const categoryName = line.category?.name || "未分類";
 
             // line_typeごとに分けて集計
             const key = `${categoryId}-${line.line_type}`;
@@ -290,10 +501,22 @@ export default function BSReportPage() {
     }
 
     fetchData();
-  }, []);
+  }, [selectedMonth]);
 
   const toggleAccountExpand = (accountId: string) => {
     setExpandedAccounts((prev) => {
+      const next = new Set(prev);
+      if (next.has(accountId)) {
+        next.delete(accountId);
+      } else {
+        next.add(accountId);
+      }
+      return next;
+    });
+  };
+
+  const toggleCashAccountExpand = (accountId: string) => {
+    setExpandedCashAccounts((prev) => {
       const next = new Set(prev);
       if (next.has(accountId)) {
         next.delete(accountId);
@@ -337,14 +560,34 @@ export default function BSReportPage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.back()}
-            className="p-2 hover:bg-accent rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="font-heading text-xl font-bold">貸借対照表 (BS)</h1>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.back()}
+              className="p-2 hover:bg-accent rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="font-heading text-xl font-bold">貸借対照表 (BS)</h1>
+          </div>
+          {/* Month Navigation */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrevMonth}
+              className="p-2 hover:bg-accent rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <span className="font-medium text-sm min-w-[100px] text-center">
+              {formatMonthDisplay(selectedMonth)}
+            </span>
+            <button
+              onClick={handleNextMonth}
+              className="p-2 hover:bg-accent rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0">
@@ -508,23 +751,100 @@ export default function BSReportPage() {
               <p className="text-center text-muted-foreground py-4 text-sm">現預金の登録なし</p>
             ) : (
               <div className="space-y-2">
-                {cashBalances.map((item, index) => (
-                  <motion.div
-                    key={item.accountId}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.03 }}
-                    className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Wallet className="w-4 h-4 text-muted-foreground" />
-                      <span>{item.accountName}</span>
-                    </div>
-                    <span className="font-heading font-bold tabular-nums text-income">
-                      ¥{item.balance.toLocaleString("ja-JP")}
-                    </span>
-                  </motion.div>
-                ))}
+                {cashBalances.map((item, index) => {
+                  const isExpanded = expandedCashAccounts.has(item.accountId);
+                  return (
+                    <motion.div
+                      key={item.accountId}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      className="bg-card rounded-xl border border-border overflow-hidden"
+                    >
+                      <button
+                        onClick={() => toggleCashAccountExpand(item.accountId)}
+                        className="w-full p-4 flex justify-between items-center transition-colors hover:bg-accent cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Wallet className="w-4 h-4 text-muted-foreground" />
+                          <span>{item.accountName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`font-heading font-bold tabular-nums ${item.balance >= 0 ? "text-income" : "text-expense"}`}>
+                            ¥{item.balance.toLocaleString("ja-JP")}
+                          </span>
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </div>
+                      </button>
+
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="border-t border-border"
+                          >
+                            <div className="p-4 pt-3 space-y-2 bg-secondary/30">
+                              <p className="text-xs text-muted-foreground mb-2">当月の増減</p>
+                              {/* 月初残高 */}
+                              <div className="flex justify-between items-center text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-muted-foreground">月初残高</span>
+                                </div>
+                                <span className="tabular-nums">
+                                  ¥{item.monthStartBalance.toLocaleString("ja-JP")}
+                                </span>
+                              </div>
+                              {/* 取引一覧 */}
+                              {item.transactions.length === 0 ? (
+                                <p className="text-xs text-muted-foreground text-center py-2">この月の取引なし</p>
+                              ) : (
+                                item.transactions.map((tx) => (
+                                  <div
+                                    key={tx.id}
+                                    className="flex justify-between items-center text-sm"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-muted-foreground">{tx.date.slice(5)}</span>
+                                      <span className="truncate max-w-[120px]">{tx.description}</span>
+                                    </div>
+                                    <span className={`tabular-nums ${tx.income > tx.expense ? "text-income" : "text-expense"}`}>
+                                      {tx.income > tx.expense ? "+" : "-"}¥{Math.abs(tx.income - tx.expense).toLocaleString("ja-JP")}
+                                    </span>
+                                  </div>
+                                ))
+                              )}
+                              {/* 合計 */}
+                              {item.transactions.length > 0 && (
+                                <>
+                                  <div className="border-t border-border pt-2 mt-2 flex justify-between items-center text-sm">
+                                    <span className="text-muted-foreground">収入計</span>
+                                    <span className="tabular-nums text-income">+¥{item.totalIncome.toLocaleString("ja-JP")}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="text-muted-foreground">支出計</span>
+                                    <span className="tabular-nums text-expense">-¥{item.totalExpense.toLocaleString("ja-JP")}</span>
+                                  </div>
+                                </>
+                              )}
+                              <div className="border-t border-border pt-2 flex justify-between items-center text-sm font-bold">
+                                <span>月末残高</span>
+                                <span className={`tabular-nums ${item.balance >= 0 ? "text-income" : "text-expense"}`}>
+                                  ¥{item.balance.toLocaleString("ja-JP")}
+                                </span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
                 <div className="bg-secondary/30 rounded-lg p-3 flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">現預金計</span>
                   <span className="font-heading font-bold tabular-nums text-income">
@@ -701,11 +1021,8 @@ export default function BSReportPage() {
                                   <div className="flex items-center gap-2">
                                     <Tag className="w-3 h-3 text-muted-foreground" />
                                     <span>{cat.categoryName}</span>
-                                    {cat.lineType === "asset" && (
-                                      <span className="text-xs px-1.5 py-0.5 bg-income/20 text-income rounded">立替</span>
-                                    )}
                                   </div>
-                                  <span className={`tabular-nums ${cat.lineType === "asset" ? "text-income" : ""}`}>
+                                  <span className="tabular-nums">
                                     ¥{cat.amount.toLocaleString("ja-JP")}
                                   </span>
                                 </div>
