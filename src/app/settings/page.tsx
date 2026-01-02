@@ -4,7 +4,7 @@ import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Wallet, Tag, Database, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users } from "lucide-react";
+import { Wallet, Tag, Database, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark } from "lucide-react";
 
 const settingsItems = [
   {
@@ -36,6 +36,12 @@ const settingsItems = [
     description: "カテゴリ別の月間予算を設定",
     icon: PiggyBank,
     href: "/settings/budgets",
+  },
+  {
+    title: "資産・負債",
+    description: "投資や住宅ローン等の残高を登録",
+    icon: Landmark,
+    href: "/settings/balance-items",
   },
   {
     title: "口座管理",

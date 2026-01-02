@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, Tag, PieChart as PieChartIcon } from "lucide-react";
+import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, Tag, PieChart as PieChartIcon, Landmark, TrendingUp, TrendingDown } from "lucide-react";
 import { supabase, type Tables } from "@/lib/supabase";
 import {
   PieChart,
@@ -28,6 +28,7 @@ const COLORS = {
 };
 
 type Account = Tables<"accounts">;
+type BalanceItem = Tables<"balance_items">;
 
 interface CashBalance {
   accountId: string;
@@ -73,6 +74,8 @@ export default function BSReportPage() {
   const [receivablesByAccount, setReceivablesByAccount] = useState<AccountReceivable[]>([]);
   const [receivables, setReceivables] = useState<CounterpartyBalance[]>([]);
   const [liabilities, setLiabilities] = useState<CounterpartyBalance[]>([]);
+  const [assetItems, setAssetItems] = useState<BalanceItem[]>([]);
+  const [liabilityItems, setLiabilityItems] = useState<BalanceItem[]>([]);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const [showChart, setShowChart] = useState(false);
 
@@ -270,6 +273,19 @@ export default function BSReportPage() {
 
       setReceivables(counterpartyReceivableList.sort((a, b) => b.amount - a.amount));
       setLiabilities(liabilityList.sort((a, b) => b.amount - a.amount));
+
+      // Fetch balance_items (投資、ローンなど)
+      const { data: balanceItems } = await supabase
+        .from("balance_items")
+        .select("*")
+        .eq("is_active", true)
+        .order("name");
+
+      if (balanceItems) {
+        setAssetItems(balanceItems.filter(i => i.item_type === "asset"));
+        setLiabilityItems(balanceItems.filter(i => i.item_type === "liability"));
+      }
+
       setIsLoading(false);
     }
 
@@ -293,11 +309,13 @@ export default function BSReportPage() {
   const totalAccountsReceivable = receivablesByAccount.reduce((sum, r) => sum + r.totalAmount, 0); // 未収金
   const totalBorrowings = liabilities.reduce((sum, l) => sum + l.amount, 0);
   const totalCash = cashBalances.reduce((sum, c) => sum + c.balance, 0); // 現預金
+  const totalAssetItems = assetItems.reduce((sum, i) => sum + i.balance, 0); // その他資産
+  const totalLiabilityItems = liabilityItems.reduce((sum, i) => sum + i.balance, 0); // その他負債
 
-  // 資産合計 = 現預金 + 立替金（債権）+ 未収金
-  const totalAssets = totalCash + totalReceivables + totalAccountsReceivable;
-  // 負債合計 = 未払金 + 借入金
-  const totalLiabilities = totalPayables + totalBorrowings;
+  // 資産合計 = 現預金 + 立替金（債権）+ 未収金 + その他資産
+  const totalAssets = totalCash + totalReceivables + totalAccountsReceivable + totalAssetItems;
+  // 負債合計 = 未払金 + 借入金 + その他負債
+  const totalLiabilities = totalPayables + totalBorrowings + totalLiabilityItems;
   // 純資産 = 資産 - 負債
   const netPosition = totalAssets - totalLiabilities;
 
@@ -576,6 +594,37 @@ export default function BSReportPage() {
             )}
           </div>
 
+          {/* その他資産（投資など） */}
+          {assetItems.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-income" />
+                その他資産
+              </h3>
+              <div className="space-y-2">
+                {assetItems.map((item, index) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
+                  >
+                    <div>
+                      <span>{item.name}</span>
+                      {item.balance_date && (
+                        <p className="text-xs text-muted-foreground">{item.balance_date}時点</p>
+                      )}
+                    </div>
+                    <span className="font-heading font-bold tabular-nums text-income">
+                      ¥{item.balance.toLocaleString("ja-JP")}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 資産合計 */}
           <div className="bg-secondary/50 rounded-xl p-4 flex justify-between items-center">
             <span className="font-medium">資産合計</span>
@@ -699,6 +748,37 @@ export default function BSReportPage() {
               </div>
             )}
           </div>
+
+          {/* その他負債（ローンなど） */}
+          {liabilityItems.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                <TrendingDown className="w-4 h-4 text-expense" />
+                その他負債
+              </h3>
+              <div className="space-y-2">
+                {liabilityItems.map((item, index) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
+                  >
+                    <div>
+                      <span>{item.name}</span>
+                      {item.balance_date && (
+                        <p className="text-xs text-muted-foreground">{item.balance_date}時点</p>
+                      )}
+                    </div>
+                    <span className="font-heading font-bold tabular-nums text-expense">
+                      ¥{item.balance.toLocaleString("ja-JP")}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 負債合計 */}
           <div className="bg-secondary/50 rounded-xl p-4 flex justify-between items-center">
