@@ -285,21 +285,11 @@ export default function BalanceItemsPage() {
           </Button>
         </div>
 
-        {/* Summary */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-card rounded-xl p-4 border border-border">
-            <p className="text-xs text-muted-foreground mb-1">資産合計</p>
-            <p className="font-heading text-lg font-bold tabular-nums text-income">
-              ¥{totalAssets.toLocaleString("ja-JP")}
-            </p>
-          </div>
-          <div className="bg-card rounded-xl p-4 border border-border">
-            <p className="text-xs text-muted-foreground mb-1">負債合計</p>
-            <p className="font-heading text-lg font-bold tabular-nums text-expense">
-              ¥{totalLiabilities.toLocaleString("ja-JP")}
-            </p>
-          </div>
-        </div>
+        {/* Description */}
+        <p className="text-sm text-muted-foreground">
+          投資や住宅ローンなど、日常取引以外の資産・負債を登録できます。
+          ここで登録した内容はBS（貸借対照表）に反映されます。
+        </p>
 
         {/* Assets */}
         <div>

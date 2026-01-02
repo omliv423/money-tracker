@@ -796,38 +796,6 @@ export default function BSReportPage() {
             ¥{netPosition.toLocaleString("ja-JP")}
           </span>
         </div>
-
-        {/* Accounts List */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-            <Wallet className="w-4 h-4" />
-            登録口座・支払い方法
-          </h2>
-          <div className="space-y-2">
-            {accounts.map((account, index) => (
-              <motion.div
-                key={account.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.03 }}
-                className="bg-card rounded-xl p-4 border border-border flex justify-between items-center"
-              >
-                <div className="flex items-center gap-3">
-                  {account.type === "card" ? (
-                    <CreditCard className="w-4 h-4 text-muted-foreground" />
-                  ) : (
-                    <Wallet className="w-4 h-4 text-muted-foreground" />
-                  )}
-                  <span>{account.name}</span>
-                  {account.owner === "shared" && (
-                    <span className="text-xs text-muted-foreground">(共同)</span>
-                  )}
-                </div>
-                <span className="text-xs text-muted-foreground capitalize">{account.type}</span>
-              </motion.div>
-            ))}
-          </div>
-        </div>
           </div>
         </div>
       </div>
