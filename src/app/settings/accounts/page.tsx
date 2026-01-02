@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Plus, Wallet, CreditCard, Trash2, X } from "lucide-react";
+import { ArrowLeft, Plus, Wallet, CreditCard, Trash2, X, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,7 +33,19 @@ import {
 import { supabase, type Tables } from "@/lib/supabase";
 import { useAuth } from "@/components/providers/AuthProvider";
 
-type Account = Tables<"accounts">;
+type Account = Tables<"accounts"> & {
+  is_shared?: boolean;
+  partner_user_id?: string | null;
+  partner_name?: string | null;
+  default_split_ratio?: number;
+};
+
+interface HouseholdMember {
+  id: string;
+  user_id: string | null;
+  invited_email: string | null;
+  status: string;
+}
 
 const accountTypes = [
   { value: "bank", label: "銀行口座" },
@@ -73,6 +85,23 @@ export default function AccountsSettingsPage() {
   const [editOpeningDate, setEditOpeningDate] = useState("");
   const [editCurrentBalance, setEditCurrentBalance] = useState("");
 
+  // Shared account settings - new
+  const [newIsShared, setNewIsShared] = useState(false);
+  const [newPartnerType, setNewPartnerType] = useState<"member" | "manual">("member");
+  const [newPartnerUserId, setNewPartnerUserId] = useState("");
+  const [newPartnerName, setNewPartnerName] = useState("");
+  const [newSplitRatio, setNewSplitRatio] = useState("50");
+
+  // Shared account settings - edit
+  const [editIsShared, setEditIsShared] = useState(false);
+  const [editPartnerType, setEditPartnerType] = useState<"member" | "manual">("member");
+  const [editPartnerUserId, setEditPartnerUserId] = useState("");
+  const [editPartnerName, setEditPartnerName] = useState("");
+  const [editSplitRatio, setEditSplitRatio] = useState("50");
+
+  // Household members for partner selection
+  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
+
   const fetchAccounts = async () => {
     setIsLoading(true);
     const { data } = await supabase
@@ -86,16 +115,53 @@ export default function AccountsSettingsPage() {
     setIsLoading(false);
   };
 
+  const fetchHouseholdMembers = async () => {
+    if (!user) return;
+
+    // Get household where user is owner
+    const { data: ownedHousehold } = await supabase
+      .from("households")
+      .select("id")
+      .eq("owner_id", user.id)
+      .single();
+
+    let householdId = ownedHousehold?.id;
+
+    // If not owner, check if user is a member
+    if (!householdId) {
+      const { data: membership } = await supabase
+        .from("household_members")
+        .select("household_id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .single();
+
+      householdId = membership?.household_id;
+    }
+
+    if (householdId) {
+      const { data: members } = await supabase
+        .from("household_members")
+        .select("id, user_id, invited_email, status")
+        .eq("household_id", householdId)
+        .eq("status", "active")
+        .neq("user_id", user.id);
+
+      setHouseholdMembers(members || []);
+    }
+  };
+
   useEffect(() => {
     fetchAccounts();
-  }, []);
+    fetchHouseholdMembers();
+  }, [user]);
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
 
     setIsSaving(true);
     const openingBalanceValue = newOpeningBalance ? parseInt(newOpeningBalance) : 0;
-    await supabase.from("accounts").insert({
+    await (supabase as any).from("accounts").insert({
       user_id: user?.id,
       name: newName.trim(),
       type: newType,
@@ -103,6 +169,10 @@ export default function AccountsSettingsPage() {
       opening_balance: openingBalanceValue,
       current_balance: openingBalanceValue,
       opening_date: newOpeningDate || null,
+      is_shared: newIsShared,
+      partner_user_id: newIsShared && newPartnerType === "member" && newPartnerUserId ? newPartnerUserId : null,
+      partner_name: newIsShared && newPartnerType === "manual" && newPartnerName ? newPartnerName : null,
+      default_split_ratio: newIsShared ? parseInt(newSplitRatio) || 50 : 50,
     });
 
     setNewName("");
@@ -110,6 +180,11 @@ export default function AccountsSettingsPage() {
     setNewOwner("self");
     setNewOpeningBalance("");
     setNewOpeningDate("");
+    setNewIsShared(false);
+    setNewPartnerType("member");
+    setNewPartnerUserId("");
+    setNewPartnerName("");
+    setNewSplitRatio("50");
     setShowAddDialog(false);
     setIsSaving(false);
     fetchAccounts();
@@ -123,13 +198,29 @@ export default function AccountsSettingsPage() {
     setEditOpeningBalance(account.opening_balance?.toString() || "0");
     setEditOpeningDate((account as any).opening_date || "");
     setEditCurrentBalance(account.current_balance?.toString() || "");
+    // Shared account settings
+    setEditIsShared(account.is_shared || false);
+    if (account.partner_user_id) {
+      setEditPartnerType("member");
+      setEditPartnerUserId(account.partner_user_id);
+      setEditPartnerName("");
+    } else if (account.partner_name) {
+      setEditPartnerType("manual");
+      setEditPartnerUserId("");
+      setEditPartnerName(account.partner_name);
+    } else {
+      setEditPartnerType("member");
+      setEditPartnerUserId("");
+      setEditPartnerName("");
+    }
+    setEditSplitRatio((account.default_split_ratio ?? 50).toString());
   };
 
   const handleSaveEdit = async () => {
     if (!editAccount || !editName.trim()) return;
 
     setIsSaving(true);
-    await supabase
+    await (supabase as any)
       .from("accounts")
       .update({
         name: editName.trim(),
@@ -138,6 +229,10 @@ export default function AccountsSettingsPage() {
         opening_balance: editOpeningBalance ? parseInt(editOpeningBalance) : 0,
         current_balance: editCurrentBalance !== "" ? parseInt(editCurrentBalance) : null,
         opening_date: editOpeningDate || null,
+        is_shared: editIsShared,
+        partner_user_id: editIsShared && editPartnerType === "member" && editPartnerUserId ? editPartnerUserId : null,
+        partner_name: editIsShared && editPartnerType === "manual" && editPartnerName ? editPartnerName : null,
+        default_split_ratio: editIsShared ? parseInt(editSplitRatio) || 50 : 50,
       })
       .eq("id", editAccount.id);
 
@@ -219,12 +314,18 @@ export default function AccountsSettingsPage() {
                     )}
                     <div>
                       <p className="font-medium">{account.name}</p>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
+                      <div className="flex gap-2 text-xs text-muted-foreground flex-wrap">
                         <span>
                           {accountTypes.find((t) => t.value === account.type)?.label || account.type}
                         </span>
                         {account.owner === "shared" && (
                           <span className="text-primary">(共同)</span>
+                        )}
+                        {account.is_shared && (
+                          <span className="flex items-center gap-1 text-blue-500">
+                            <Users className="w-3 h-3" />
+                            {account.default_split_ratio}:{100 - (account.default_split_ratio ?? 50)}
+                          </span>
                         )}
                       </div>
                       {(account.current_balance ?? 0) !== 0 && (
@@ -324,6 +425,100 @@ export default function AccountsSettingsPage() {
                 この日付より前の取引は残高計算に含まれません
               </p>
             </div>
+
+            {/* 共有口座設定 */}
+            <div className="border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setNewIsShared(!newIsShared)}
+                className={`w-full flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                  newIsShared
+                    ? "bg-blue-500/10 border-blue-500/30"
+                    : "bg-secondary/50 border-border"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  <span className="text-sm font-medium">共有口座として設定</span>
+                </div>
+                <div className={`w-10 h-6 rounded-full transition-colors ${
+                  newIsShared ? "bg-blue-500" : "bg-muted"
+                }`}>
+                  <div className={`w-5 h-5 mt-0.5 rounded-full bg-white shadow transition-transform ${
+                    newIsShared ? "translate-x-4 ml-0.5" : "translate-x-0.5"
+                  }`} />
+                </div>
+              </button>
+
+              {newIsShared && (
+                <div className="mt-3 space-y-3 p-3 bg-secondary/30 rounded-lg">
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-1 block">パートナー</label>
+                    <Select
+                      value={newPartnerType === "member" ? newPartnerUserId || "select" : "manual"}
+                      onValueChange={(value) => {
+                        if (value === "manual") {
+                          setNewPartnerType("manual");
+                          setNewPartnerUserId("");
+                        } else if (value !== "select") {
+                          setNewPartnerType("member");
+                          setNewPartnerUserId(value);
+                          setNewPartnerName("");
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="パートナーを選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {householdMembers.length > 0 ? (
+                          <>
+                            {householdMembers.map((member) => (
+                              <SelectItem key={member.id} value={member.user_id || member.id}>
+                                {member.invited_email || "パートナー"}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="manual">その他（手動入力）</SelectItem>
+                          </>
+                        ) : (
+                          <SelectItem value="manual">手動入力</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {newPartnerType === "manual" && (
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-1 block">パートナー名</label>
+                      <Input
+                        placeholder="例: あさみ"
+                        value={newPartnerName}
+                        onChange={(e) => setNewPartnerName(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-1 block">
+                      自分の負担比率: {newSplitRatio}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={newSplitRatio}
+                      onChange={(e) => setNewSplitRatio(e.target.value)}
+                      className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                      <span>自分: {newSplitRatio}%</span>
+                      <span>パートナー: {100 - parseInt(newSplitRatio)}%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Button
               onClick={handleAdd}
               disabled={!newName.trim() || isSaving}
@@ -414,6 +609,100 @@ export default function AccountsSettingsPage() {
                 消し込みで自動更新。手動で修正も可能
               </p>
             </div>
+
+            {/* 共有口座設定 */}
+            <div className="border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => setEditIsShared(!editIsShared)}
+                className={`w-full flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                  editIsShared
+                    ? "bg-blue-500/10 border-blue-500/30"
+                    : "bg-secondary/50 border-border"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  <span className="text-sm font-medium">共有口座として設定</span>
+                </div>
+                <div className={`w-10 h-6 rounded-full transition-colors ${
+                  editIsShared ? "bg-blue-500" : "bg-muted"
+                }`}>
+                  <div className={`w-5 h-5 mt-0.5 rounded-full bg-white shadow transition-transform ${
+                    editIsShared ? "translate-x-4 ml-0.5" : "translate-x-0.5"
+                  }`} />
+                </div>
+              </button>
+
+              {editIsShared && (
+                <div className="mt-3 space-y-3 p-3 bg-secondary/30 rounded-lg">
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-1 block">パートナー</label>
+                    <Select
+                      value={editPartnerType === "member" ? editPartnerUserId || "select" : "manual"}
+                      onValueChange={(value) => {
+                        if (value === "manual") {
+                          setEditPartnerType("manual");
+                          setEditPartnerUserId("");
+                        } else if (value !== "select") {
+                          setEditPartnerType("member");
+                          setEditPartnerUserId(value);
+                          setEditPartnerName("");
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="パートナーを選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {householdMembers.length > 0 ? (
+                          <>
+                            {householdMembers.map((member) => (
+                              <SelectItem key={member.id} value={member.user_id || member.id}>
+                                {member.invited_email || "パートナー"}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="manual">その他（手動入力）</SelectItem>
+                          </>
+                        ) : (
+                          <SelectItem value="manual">手動入力</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {editPartnerType === "manual" && (
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-1 block">パートナー名</label>
+                      <Input
+                        placeholder="例: あさみ"
+                        value={editPartnerName}
+                        onChange={(e) => setEditPartnerName(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-1 block">
+                      自分の負担比率: {editSplitRatio}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={editSplitRatio}
+                      onChange={(e) => setEditSplitRatio(e.target.value)}
+                      className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                      <span>自分: {editSplitRatio}%</span>
+                      <span>パートナー: {100 - parseInt(editSplitRatio)}%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Button
               onClick={handleSaveEdit}
               disabled={!editName.trim() || isSaving}

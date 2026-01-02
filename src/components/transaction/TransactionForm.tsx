@@ -29,7 +29,12 @@ import { TransactionLineItem, type LineItemData } from "./TransactionLineItem";
 import { supabase, type Tables } from "@/lib/supabase";
 import { useAuth } from "@/components/providers/AuthProvider";
 
-type Account = Tables<"accounts">;
+type Account = Tables<"accounts"> & {
+  is_shared?: boolean;
+  partner_user_id?: string | null;
+  partner_name?: string | null;
+  default_split_ratio?: number;
+};
 type Category = Tables<"categories">;
 type Counterparty = Tables<"counterparties">;
 
@@ -180,15 +185,19 @@ export function TransactionForm() {
     }
   };
 
-  // 共同カード選択時に自動で65:35の割合を設定
+  // 共有口座選択時に自動で分割比率を設定
   const handleAccountChange = (newAccountId: string) => {
     setAccountId(newAccountId);
 
     const selectedAccount = accounts.find((a) => a.id === newAccountId);
-    if (selectedAccount?.name === "共同カード" && lines.length === 1 && totalAmount > 0) {
-      // 65:35の割合で計算（自分65%、あさみ35%）
-      const myAmount = Math.round(totalAmount * 0.65);
-      const asamiAmount = totalAmount - myAmount;
+    // 共有口座の場合、設定された比率で自動分割
+    if (selectedAccount?.is_shared && lines.length === 1 && totalAmount > 0) {
+      const splitRatio = selectedAccount.default_split_ratio ?? 50;
+      const myAmount = Math.round(totalAmount * (splitRatio / 100));
+      const partnerAmount = totalAmount - myAmount;
+
+      // パートナー名を取得（partner_nameまたはデフォルト）
+      const partnerName = selectedAccount.partner_name || "パートナー";
 
       setLines([
         {
@@ -197,10 +206,10 @@ export function TransactionForm() {
         },
         {
           id: generateId(),
-          amount: asamiAmount,
+          amount: partnerAmount,
           categoryId: lines[0].categoryId,
           lineType: "asset",
-          counterparty: "あさみ",
+          counterparty: partnerName,
           amortizationMonths: 1,
           amortizationEndDate: null,
         },
@@ -496,6 +505,11 @@ export function TransactionForm() {
                       {account.name}
                       {account.owner === "shared" && (
                         <span className="ml-1 text-xs text-muted-foreground">(共同)</span>
+                      )}
+                      {account.is_shared && (
+                        <span className="ml-1 text-xs text-blue-500">
+                          [{account.default_split_ratio}:{100 - (account.default_split_ratio ?? 50)}]
+                        </span>
                       )}
                     </SelectItem>
                   ))}
