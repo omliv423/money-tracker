@@ -48,23 +48,29 @@ export function CategoryPicker({
     );
   }, [filteredByType, searchQuery]);
 
-  // Build hierarchical structure
+  // Build hierarchical structure with proper sorting
   const parentCategories = useMemo(
-    () => searchFiltered.filter((cat) => cat.parent_id === null),
+    () => searchFiltered
+      .filter((cat) => cat.parent_id === null)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja')),
     [searchFiltered]
   );
 
   const getChildren = (parentId: string) =>
-    searchFiltered.filter((cat) => cat.parent_id === parentId);
+    searchFiltered
+      .filter((cat) => cat.parent_id === parentId)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
   // Get orphaned children (children whose parent is filtered out)
   const orphanedChildren = useMemo(() => {
     if (!searchQuery) return [];
-    return searchFiltered.filter(
-      (cat) =>
-        cat.parent_id !== null &&
-        !searchFiltered.some((p) => p.id === cat.parent_id)
-    );
+    return searchFiltered
+      .filter(
+        (cat) =>
+          cat.parent_id !== null &&
+          !searchFiltered.some((p) => p.id === cat.parent_id)
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   }, [searchFiltered, searchQuery]);
 
   const handleSelect = (categoryId: string) => {
@@ -87,7 +93,7 @@ export function CategoryPicker({
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-h-[80vh] flex flex-col">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>カテゴリを選択</DialogTitle>
           </DialogHeader>
@@ -113,7 +119,7 @@ export function CategoryPicker({
           </div>
 
           {/* Category List */}
-          <div className="flex-1 overflow-y-auto -mx-6 px-6 py-2 space-y-4">
+          <div className="max-h-[50vh] overflow-y-auto -mx-6 px-6 py-2 space-y-4">
             {parentCategories.length === 0 && orphanedChildren.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
                 該当するカテゴリがありません

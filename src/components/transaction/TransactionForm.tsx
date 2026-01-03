@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Check, Calendar, Wallet, FileText, CreditCard, Store, AlertTriangle } from "lucide-react";
-import { format, differenceInMonths } from "date-fns";
+import { format, differenceInMonths, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { AmountInput } from "./AmountInput";
 import { TransactionLineItem, type LineItemData } from "./TransactionLineItem";
+import { DatePicker } from "@/components/ui/date-picker";
 import { supabase, type Tables } from "@/lib/supabase";
 import { useAuth } from "@/components/providers/AuthProvider";
 
@@ -435,33 +436,31 @@ export function TransactionForm() {
 
             {/* Dates */}
             <div className="bg-card rounded-xl p-4 border border-border space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Calendar className="w-4 h-4" /> 発生日
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> 発生日
                 </label>
-                <Input
-                  type="date"
-                  value={accrualDate}
-                  onChange={(e) => setAccrualDate(e.target.value)}
-                  className="w-40 text-right"
+                <DatePicker
+                  value={accrualDate ? parseISO(accrualDate) : undefined}
+                  onChange={(date) => setAccrualDate(date ? format(date, "yyyy-MM-dd") : "")}
                 />
               </div>
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-muted-foreground flex items-center gap-2">
-                  <CreditCard className="w-4 h-4" /> {isIncomeTransaction ? "入金日" : "支払日"}
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CreditCard className="w-3 h-3" /> {isIncomeTransaction ? "入金日" : "支払日"}
                 </label>
                 <div className="flex items-center gap-2">
                   {paymentDate === null ? (
-                    <span className="text-sm text-muted-foreground">未定</span>
+                    <div className="flex-1 text-sm text-muted-foreground py-2">未定</div>
                   ) : (
-                    <Input
-                      type="date"
-                      value={paymentDate}
-                      onChange={(e) => setPaymentDate(e.target.value)}
-                      className="w-40 text-right"
-                    />
+                    <div className="flex-1">
+                      <DatePicker
+                        value={paymentDate ? parseISO(paymentDate) : undefined}
+                        onChange={(date) => setPaymentDate(date ? format(date, "yyyy-MM-dd") : null)}
+                      />
+                    </div>
                   )}
-                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer shrink-0">
                     <input
                       type="checkbox"
                       checked={paymentDate === null}

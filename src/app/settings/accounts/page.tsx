@@ -366,7 +366,7 @@ export default function AccountsSettingsPage() {
           <DialogHeader>
             <DialogTitle>口座を追加</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-4">
+          <div className="space-y-4 pt-4 max-h-[60vh] overflow-y-auto -mx-6 px-6">
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">名前</label>
               <Input
@@ -536,7 +536,7 @@ export default function AccountsSettingsPage() {
           <DialogHeader>
             <DialogTitle>口座を編集</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-4">
+          <div className="space-y-4 pt-4 max-h-[60vh] overflow-y-auto -mx-6 px-6">
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">名前</label>
               <Input
