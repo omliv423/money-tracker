@@ -4,11 +4,18 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { TrendingUp, TrendingDown, Scale, ArrowRight } from "lucide-react";
+import { TrendingUp, TrendingDown, Scale, ArrowRight, Calendar } from "lucide-react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 
 const reportCards = [
+  {
+    title: "年間収支計画",
+    description: "年間の収入・支出計画を作成・管理",
+    icon: Calendar,
+    href: "/reports/annual-plan",
+    color: "text-primary",
+  },
   {
     title: "損益計算書 (PL)",
     description: "収入と支出のバランスを確認",

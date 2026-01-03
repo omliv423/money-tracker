@@ -32,10 +32,10 @@ const settingsItems = [
     href: "/settings/quick-entries",
   },
   {
-    title: "予算管理",
-    description: "カテゴリ別の月間予算を設定",
+    title: "年間収支計画",
+    description: "年間の収入・支出予算を計画",
     icon: PiggyBank,
-    href: "/settings/budgets",
+    href: "/reports/annual-plan",
   },
   {
     title: "資産・負債",

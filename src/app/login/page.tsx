@@ -40,7 +40,7 @@ export default function LoginPage() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-10">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-10 safe-area-top">
       <div className="w-full max-w-5xl">
         <div className="grid gap-10 md:grid-cols-[1.1fr_0.9fr] md:items-center">
           {/* Hero Section */}
