@@ -6,11 +6,12 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ChevronRight, Calendar, Trash2, Filter, X } from "lucide-react";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase, type Tables } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -251,19 +252,16 @@ function TransactionsContent() {
               {/* Date Range */}
               <div>
                 <label className="text-xs text-muted-foreground mb-2 block">期間</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="date"
-                    value={filters.dateFrom}
-                    onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                    className="flex-1 text-sm"
+                <div className="space-y-2">
+                  <DatePicker
+                    value={filters.dateFrom ? parseISO(filters.dateFrom) : undefined}
+                    onChange={(date) => setFilters({ ...filters, dateFrom: date ? format(date, "yyyy-MM-dd") : "" })}
+                    placeholder="開始日"
                   />
-                  <span className="text-muted-foreground text-sm">〜</span>
-                  <Input
-                    type="date"
-                    value={filters.dateTo}
-                    onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                    className="flex-1 text-sm"
+                  <DatePicker
+                    value={filters.dateTo ? parseISO(filters.dateTo) : undefined}
+                    onChange={(date) => setFilters({ ...filters, dateTo: date ? format(date, "yyyy-MM-dd") : "" })}
+                    placeholder="終了日"
                   />
                 </div>
               </div>

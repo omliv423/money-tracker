@@ -133,45 +133,43 @@ export function CategoryPicker({
 
                   return (
                     <div key={parent.id}>
-                      {hasChildren ? (
-                        <>
-                          <p className="text-xs font-medium text-muted-foreground mb-2">
+                      <p className="text-xs font-medium text-muted-foreground mb-2">
+                        {parent.name}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {hasChildren ? (
+                          children.map((child) => (
+                            <button
+                              key={child.id}
+                              onClick={() => handleSelect(child.id)}
+                              className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-1.5 ${
+                                child.id === selectedId
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-secondary hover:bg-accent"
+                              }`}
+                            >
+                              {child.id === selectedId && (
+                                <Check className="w-3 h-3" />
+                              )}
+                              {child.name}
+                            </button>
+                          ))
+                        ) : (
+                          <button
+                            onClick={() => handleSelect(parent.id)}
+                            className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-1.5 ${
+                              parent.id === selectedId
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-secondary hover:bg-accent"
+                            }`}
+                          >
+                            {parent.id === selectedId && (
+                              <Check className="w-3 h-3" />
+                            )}
                             {parent.name}
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {children.map((child) => (
-                              <button
-                                key={child.id}
-                                onClick={() => handleSelect(child.id)}
-                                className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-1.5 ${
-                                  child.id === selectedId
-                                    ? "bg-primary text-primary-foreground"
-                                    : "bg-secondary hover:bg-accent"
-                                }`}
-                              >
-                                {child.id === selectedId && (
-                                  <Check className="w-3 h-3" />
-                                )}
-                                {child.name}
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => handleSelect(parent.id)}
-                          className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-1.5 ${
-                            parent.id === selectedId
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-secondary hover:bg-accent"
-                          }`}
-                        >
-                          {parent.id === selectedId && (
-                            <Check className="w-3 h-3" />
-                          )}
-                          {parent.name}
-                        </button>
-                      )}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
