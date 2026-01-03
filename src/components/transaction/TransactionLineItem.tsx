@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Trash2, Calendar } from "lucide-react";
+import { Trash2, Calendar, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +16,7 @@ import { CategoryPicker } from "./CategoryPicker";
 import type { Tables } from "@/lib/supabase";
 
 type Category = Tables<"categories">;
+type Counterparty = Tables<"counterparties">;
 type LineType = "income" | "expense" | "asset" | "liability";
 
 export interface LineItemData {
@@ -31,9 +32,11 @@ export interface LineItemData {
 interface TransactionLineItemProps {
   line: LineItemData;
   categories: Category[];
+  counterparties: Counterparty[];
   onChange: (line: LineItemData) => void;
   onDelete: () => void;
   canDelete: boolean;
+  onNewCounterparty?: (name: string) => Promise<void>;
 }
 
 const lineTypeOptions: { value: LineType; label: string }[] = [
@@ -47,13 +50,17 @@ const lineTypeOptions: { value: LineType; label: string }[] = [
 export function TransactionLineItem({
   line,
   categories,
+  counterparties,
   onChange,
   onDelete,
   canDelete,
+  onNewCounterparty,
 }: TransactionLineItemProps) {
   // Local state for amount input to prevent formatting while typing
   const [amountInput, setAmountInput] = useState("");
   const [isAmountFocused, setIsAmountFocused] = useState(false);
+  const [showNewCounterpartyInput, setShowNewCounterpartyInput] = useState(false);
+  const [newCounterpartyName, setNewCounterpartyName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Sync local state when line.amount changes from external sources (only when not focused)
@@ -171,12 +178,71 @@ export function TransactionLineItem({
           <label className="text-xs text-muted-foreground mb-1 block">
             {line.lineType === "asset" ? "立替先" : "借入元"}
           </label>
-          <Input
-            type="text"
-            placeholder="例: 彼女、友人名"
-            value={line.counterparty || ""}
-            onChange={(e) => onChange({ ...line, counterparty: e.target.value || null })}
-          />
+          {showNewCounterpartyInput ? (
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                placeholder="新しい相手先の名前"
+                value={newCounterpartyName}
+                onChange={(e) => setNewCounterpartyName(e.target.value)}
+                autoFocus
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (newCounterpartyName.trim() && onNewCounterparty) {
+                    await onNewCounterparty(newCounterpartyName.trim());
+                    onChange({ ...line, counterparty: newCounterpartyName.trim() });
+                  }
+                  setShowNewCounterpartyInput(false);
+                  setNewCounterpartyName("");
+                }}
+              >
+                追加
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowNewCounterpartyInput(false);
+                  setNewCounterpartyName("");
+                }}
+              >
+                戻る
+              </Button>
+            </div>
+          ) : (
+            <Select
+              value={line.counterparty || ""}
+              onValueChange={(v) => {
+                if (v === "__new__") {
+                  setShowNewCounterpartyInput(true);
+                } else {
+                  onChange({ ...line, counterparty: v || null });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="相手先を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {counterparties.map((cp) => (
+                  <SelectItem key={cp.id} value={cp.name}>
+                    {cp.name}
+                  </SelectItem>
+                ))}
+                <SelectItem value="__new__">
+                  <span className="flex items-center gap-1 text-primary">
+                    <Plus className="w-3 h-3" />
+                    新しい相手先を追加
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
       )}
 

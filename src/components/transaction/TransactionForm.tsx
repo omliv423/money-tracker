@@ -59,7 +59,9 @@ export function TransactionForm() {
   const [accountId, setAccountId] = useState("");
   const [counterpartyId, setCounterpartyId] = useState<string | null>(null);
   const [paidByOther, setPaidByOther] = useState(false); // 立替えてもらった
-  const [paidByCounterparty, setPaidByCounterparty] = useState(""); // 立替えてくれた人
+  const [paidByCounterpartyId, setPaidByCounterpartyId] = useState<string | null>(null); // 立替えてくれた人のID
+  const [newCounterpartyName, setNewCounterpartyName] = useState(""); // 新規相手先名
+  const [showNewCounterpartyInput, setShowNewCounterpartyInput] = useState(false);
   const [lines, setLines] = useState<LineItemData[]>([
     {
       id: generateId(),
@@ -336,13 +338,21 @@ export function TransactionForm() {
 
       // 立替えてもらった場合は、借入（liability）ラインを追加
       let liabilityLineId: string | null = null;
-      if (paidByOther && paidByCounterparty.trim()) {
+      const paidByCounterpartyName = getPaidByCounterpartyName();
+      if (paidByOther && paidByCounterpartyName) {
+        // 新しい相手先の場合はDBに追加
+        if (showNewCounterpartyInput && newCounterpartyName.trim()) {
+          await supabase
+            .from("counterparties")
+            .insert({ name: newCounterpartyName.trim(), user_id: user?.id });
+        }
+
         lineInserts.push({
           transaction_id: transaction.id,
           amount: totalAmount,
           category_id: lines[0].categoryId, // 最初のカテゴリを借用
           line_type: "liability",
-          counterparty: paidByCounterparty.trim(),
+          counterparty: paidByCounterpartyName,
           is_settled: false,
           amortization_months: 1,
           amortization_start: null,
@@ -358,8 +368,8 @@ export function TransactionForm() {
       if (linesError) throw linesError;
 
       // 立替えてもらった場合の自動相殺処理
-      if (paidByOther && paidByCounterparty.trim() && insertedLines) {
-        const counterpartyName = paidByCounterparty.trim();
+      if (paidByOther && paidByCounterpartyName && insertedLines) {
+        const counterpartyName = paidByCounterpartyName;
         // 新しく作成したliabilityラインのIDを取得
         const newLiabilityLine = insertedLines.find(
           (l: any) => l.line_type === "liability" && l.counterparty === counterpartyName
@@ -469,7 +479,9 @@ export function TransactionForm() {
       setPaymentDate(format(new Date(), "yyyy-MM-dd"));
       setCounterpartyId(null);
       setPaidByOther(false);
-      setPaidByCounterparty("");
+      setPaidByCounterpartyId(null);
+      setNewCounterpartyName("");
+      setShowNewCounterpartyInput(false);
       setLines([
         {
           id: generateId(),
@@ -492,12 +504,28 @@ export function TransactionForm() {
     }
   };
 
+  // 立替えてもらった場合は相手先が必要（既存選択か新規入力）
+  const paidByCounterpartyValid = !paidByOther ||
+    paidByCounterpartyId !== null ||
+    (showNewCounterpartyInput && newCounterpartyName.trim() !== "");
+
   const canSave =
     totalAmount > 0 &&
     description.trim() !== "" &&
     remainingAmount === 0 &&
     lines.every((line) => line.amount > 0 && line.categoryId) &&
-    (!paidByOther || paidByCounterparty.trim() !== ""); // 立替えてもらった場合は相手先が必要
+    paidByCounterpartyValid;
+
+  // 相手先名を取得するヘルパー
+  const getPaidByCounterpartyName = (): string => {
+    if (showNewCounterpartyInput && newCounterpartyName.trim()) {
+      return newCounterpartyName.trim();
+    }
+    if (paidByCounterpartyId) {
+      return counterparties.find(cp => cp.id === paidByCounterpartyId)?.name || "";
+    }
+    return "";
+  };
 
   if (isLoading) {
     return (
@@ -636,7 +664,9 @@ export function TransactionForm() {
                     setPaidByOther(true);
                   } else {
                     setPaidByOther(false);
-                    setPaidByCounterparty("");
+                    setPaidByCounterpartyId(null);
+                    setNewCounterpartyName("");
+                    setShowNewCounterpartyInput(false);
                     handleAccountChange(v);
                   }
                 }}
@@ -669,19 +699,63 @@ export function TransactionForm() {
                 </SelectContent>
               </Select>
 
-              {/* 立替えてもらった場合の相手先入力 */}
+              {/* 立替えてもらった場合の相手先選択 */}
               {paidByOther && (
-                <div className="mt-2 space-y-1">
+                <div className="mt-2 space-y-2">
                   <label className="text-xs text-muted-foreground flex items-center gap-1">
                     <UserPlus className="w-3 h-3" /> 立替えてくれた人
                   </label>
-                  <Input
-                    type="text"
-                    placeholder="例: あさみ、田中さん"
-                    value={paidByCounterparty}
-                    onChange={(e) => setPaidByCounterparty(e.target.value)}
-                    autoFocus
-                  />
+                  {showNewCounterpartyInput ? (
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        placeholder="新しい相手先の名前"
+                        value={newCounterpartyName}
+                        onChange={(e) => setNewCounterpartyName(e.target.value)}
+                        autoFocus
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowNewCounterpartyInput(false);
+                          setNewCounterpartyName("");
+                        }}
+                      >
+                        戻る
+                      </Button>
+                    </div>
+                  ) : (
+                    <Select
+                      value={paidByCounterpartyId || ""}
+                      onValueChange={(v) => {
+                        if (v === "__new__") {
+                          setShowNewCounterpartyInput(true);
+                          setPaidByCounterpartyId(null);
+                        } else {
+                          setPaidByCounterpartyId(v);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="相手先を選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {counterparties.map((cp) => (
+                          <SelectItem key={cp.id} value={cp.id}>
+                            {cp.name}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__new__">
+                          <span className="flex items-center gap-1 text-primary">
+                            <Plus className="w-3 h-3" />
+                            新しい相手先を追加
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     → この人への借入として精算画面に表示されます
                   </p>
@@ -745,9 +819,22 @@ export function TransactionForm() {
                   key={line.id}
                   line={line}
                   categories={categories}
+                  counterparties={counterparties}
                   onChange={(updated) => handleUpdateLine(index, updated)}
                   onDelete={() => handleDeleteLine(index)}
                   canDelete={lines.length > 1}
+                  onNewCounterparty={async (name) => {
+                    await supabase
+                      .from("counterparties")
+                      .insert({ name, user_id: user?.id });
+                    // counterpartiesリストを更新
+                    const { data } = await supabase
+                      .from("counterparties")
+                      .select("*")
+                      .eq("is_active", true)
+                      .order("name");
+                    if (data) setCounterparties(data);
+                  }}
                 />
               ))}
 
@@ -831,7 +918,7 @@ export function TransactionForm() {
                   {paidByOther && (
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground text-sm">立替えてくれた人</span>
-                      <span className="text-blue-600 font-medium">{paidByCounterparty}</span>
+                      <span className="text-blue-600 font-medium">{getPaidByCounterpartyName()}</span>
                     </div>
                   )}
                 </div>
@@ -839,7 +926,7 @@ export function TransactionForm() {
                 {/* 立替えてもらった場合の説明 */}
                 {paidByOther && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
-                    <p>→ {paidByCounterparty}さんへの借入として精算画面に表示されます</p>
+                    <p>→ {getPaidByCounterpartyName()}さんへの借入として精算画面に表示されます</p>
                   </div>
                 )}
 
