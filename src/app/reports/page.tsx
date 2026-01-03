@@ -127,7 +127,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-1 lg:content-start lg:gap-5">
+          <div className="mt-6 grid grid-cols-2 gap-4 lg:mt-0 lg:grid-cols-1 lg:content-start lg:gap-5">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}

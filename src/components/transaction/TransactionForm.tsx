@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Check, Calendar, Wallet, FileText, CreditCard, Store, AlertTriangle } from "lucide-react";
+import { Plus, Check, Calendar, Wallet, FileText, CreditCard, Store, AlertTriangle, UserPlus } from "lucide-react";
 import { format, differenceInMonths, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,8 @@ export function TransactionForm() {
   const [description, setDescription] = useState("");
   const [accountId, setAccountId] = useState("");
   const [counterpartyId, setCounterpartyId] = useState<string | null>(null);
+  const [paidByOther, setPaidByOther] = useState(false); // 立替えてもらった
+  const [paidByCounterparty, setPaidByCounterparty] = useState(""); // 立替えてくれた人
   const [lines, setLines] = useState<LineItemData[]>([
     {
       id: generateId(),
@@ -278,21 +280,24 @@ export function TransactionForm() {
     setSaveMessage(null);
 
     try {
-      // Insert transaction
-      // 支払日/入金日が発生日以前なら決済済み
-      // 支払日/入金日が未定（null）または発生日より後の場合は未決済
-      // 収入の場合は未収金、支出の場合は未払金として計上
-      const isCashSettled = paymentDate !== null && paymentDate <= accrualDate;
+      // 立替えてもらった場合は、自分の口座からの支出ではないので決済済み扱い
+      // 代わりに借入（liability）として精算画面に表示される
+      const isCashSettled = paidByOther
+        ? true // 立替えてもらった場合は決済済み（口座からの支出なし）
+        : paymentDate !== null && paymentDate <= accrualDate;
       const settledAmount = isCashSettled ? totalAmount : 0;
+
+      // 立替えてもらった場合は最初の口座を使用（スキーマ要件）
+      const transactionAccountId = paidByOther ? accounts[0]?.id : accountId;
 
       const { data: transaction, error: transactionError } = await supabase
         .from("transactions")
         .insert({
           user_id: user?.id,
           date: accrualDate, // 発生日
-          payment_date: paymentDate, // 支払日/入金日
+          payment_date: paidByOther ? accrualDate : paymentDate, // 立替えてもらった場合は発生日
           description,
-          account_id: accountId,
+          account_id: transactionAccountId,
           counterparty_id: counterpartyId,
           total_amount: totalAmount,
           is_cash_settled: isCashSettled,
@@ -329,6 +334,21 @@ export function TransactionForm() {
         };
       });
 
+      // 立替えてもらった場合は、借入（liability）ラインを追加
+      if (paidByOther && paidByCounterparty.trim()) {
+        lineInserts.push({
+          transaction_id: transaction.id,
+          amount: totalAmount,
+          category_id: lines[0].categoryId, // 最初のカテゴリを借用
+          line_type: "liability",
+          counterparty: paidByCounterparty.trim(),
+          is_settled: false,
+          amortization_months: 1,
+          amortization_start: null,
+          amortization_end: null,
+        });
+      }
+
       const { error: linesError } = await supabase
         .from("transaction_lines")
         .insert(lineInserts);
@@ -341,6 +361,8 @@ export function TransactionForm() {
       setAccrualDate(format(new Date(), "yyyy-MM-dd"));
       setPaymentDate(format(new Date(), "yyyy-MM-dd"));
       setCounterpartyId(null);
+      setPaidByOther(false);
+      setPaidByCounterparty("");
       setLines([
         {
           id: generateId(),
@@ -367,7 +389,8 @@ export function TransactionForm() {
     totalAmount > 0 &&
     description.trim() !== "" &&
     remainingAmount === 0 &&
-    lines.every((line) => line.amount > 0 && line.categoryId);
+    lines.every((line) => line.amount > 0 && line.categoryId) &&
+    (!paidByOther || paidByCounterparty.trim() !== ""); // 立替えてもらった場合は相手先が必要
 
   if (isLoading) {
     return (
@@ -445,41 +468,46 @@ export function TransactionForm() {
                   onChange={(date) => setAccrualDate(date ? format(date, "yyyy-MM-dd") : "")}
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <CreditCard className="w-3 h-3" /> {isIncomeTransaction ? "入金日" : "支払日"}
-                </label>
-                <div className="flex items-center gap-2">
-                  {paymentDate === null ? (
-                    <div className="flex-1 text-sm text-muted-foreground py-2">未定</div>
-                  ) : (
-                    <div className="flex-1">
-                      <DatePicker
-                        value={paymentDate ? parseISO(paymentDate) : undefined}
-                        onChange={(date) => setPaymentDate(date ? format(date, "yyyy-MM-dd") : null)}
-                      />
-                    </div>
-                  )}
-                  <label className="flex items-center gap-1 text-xs cursor-pointer shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={paymentDate === null}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setPaymentDate(null);
-                        } else {
-                          setPaymentDate(format(new Date(), "yyyy-MM-dd"));
-                        }
-                      }}
-                      className="w-4 h-4 rounded border-border"
-                    />
-                    未定
+              {/* 立替えてもらった場合は支払日不要 */}
+              {!paidByOther && (
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground flex items-center gap-1">
+                    <CreditCard className="w-3 h-3" /> {isIncomeTransaction ? "入金日" : "支払日"}
                   </label>
+                  <div className="flex items-center gap-2">
+                    {paymentDate === null ? (
+                      <div className="flex-1 text-sm text-muted-foreground py-2">未定</div>
+                    ) : (
+                      <div className="flex-1">
+                        <DatePicker
+                          value={paymentDate ? parseISO(paymentDate) : undefined}
+                          onChange={(date) => setPaymentDate(date ? format(date, "yyyy-MM-dd") : null)}
+                        />
+                      </div>
+                    )}
+                    <label className="flex items-center gap-1 text-xs cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={paymentDate === null}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setPaymentDate(null);
+                          } else {
+                            setPaymentDate(format(new Date(), "yyyy-MM-dd"));
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-border"
+                      />
+                      未定
+                    </label>
+                  </div>
                 </div>
-              </div>
+              )}
               {/* 決済状態プレビュー */}
               <div className="text-xs text-center">
-                {paymentDate === null ? (
+                {paidByOther ? (
+                  <span className="text-blue-500">→ 立替えてもらったため、自分の口座からの支出なし</span>
+                ) : paymentDate === null ? (
                   <span className="text-orange-500">→ {isIncomeTransaction ? "未収金" : "未払金"}として計上されます</span>
                 ) : paymentDate <= accrualDate ? (
                   <span className="text-green-500">→ 決済済み（BSに計上されない）</span>
@@ -494,7 +522,18 @@ export function TransactionForm() {
               <label className="text-xs text-muted-foreground flex items-center gap-1">
                 <Wallet className="w-3 h-3" /> {isIncomeTransaction ? "入金先" : "支払い方法"}
               </label>
-              <Select value={accountId} onValueChange={handleAccountChange}>
+              <Select
+                value={paidByOther ? "__paid_by_other__" : accountId}
+                onValueChange={(v) => {
+                  if (v === "__paid_by_other__") {
+                    setPaidByOther(true);
+                  } else {
+                    setPaidByOther(false);
+                    setPaidByCounterparty("");
+                    handleAccountChange(v);
+                  }
+                }}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -512,8 +551,35 @@ export function TransactionForm() {
                       )}
                     </SelectItem>
                   ))}
+                  {!isIncomeTransaction && (
+                    <SelectItem value="__paid_by_other__">
+                      <span className="flex items-center gap-1">
+                        <UserPlus className="w-3 h-3" />
+                        立替えてもらった
+                      </span>
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
+
+              {/* 立替えてもらった場合の相手先入力 */}
+              {paidByOther && (
+                <div className="mt-2 space-y-1">
+                  <label className="text-xs text-muted-foreground flex items-center gap-1">
+                    <UserPlus className="w-3 h-3" /> 立替えてくれた人
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="例: あさみ、田中さん"
+                    value={paidByCounterparty}
+                    onChange={(e) => setPaidByCounterparty(e.target.value)}
+                    autoFocus
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    → この人への借入として精算画面に表示されます
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Description */}
@@ -647,9 +713,28 @@ export function TransactionForm() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground text-sm">{isIncomeTransaction ? "入金先" : "支払い方法"}</span>
-                    <span className="text-foreground">{accounts.find((a) => a.id === accountId)?.name || "-"}</span>
+                    <span className="text-foreground">
+                      {paidByOther ? (
+                        <span className="text-blue-600">立替えてもらった</span>
+                      ) : (
+                        accounts.find((a) => a.id === accountId)?.name || "-"
+                      )}
+                    </span>
                   </div>
+                  {paidByOther && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground text-sm">立替えてくれた人</span>
+                      <span className="text-blue-600 font-medium">{paidByCounterparty}</span>
+                    </div>
+                  )}
                 </div>
+
+                {/* 立替えてもらった場合の説明 */}
+                {paidByOther && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                    <p>→ {paidByCounterparty}さんへの借入として精算画面に表示されます</p>
+                  </div>
+                )}
 
                 {/* 内訳 */}
                 <div className="space-y-1">

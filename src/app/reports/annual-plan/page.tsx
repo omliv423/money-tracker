@@ -161,31 +161,31 @@ export default function AnnualPlanPage() {
         </div>
 
         {/* 年間サマリー */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-card rounded-xl p-4 border border-border">
-            <div className="flex items-center gap-2 mb-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="bg-card rounded-xl p-4 border border-border flex items-center justify-between sm:block">
+            <div className="flex items-center gap-2 sm:mb-2">
               <TrendingUp className="w-4 h-4 text-income" />
-              <span className="text-sm text-muted-foreground">年間収入</span>
+              <span className="text-sm text-muted-foreground whitespace-nowrap">年間収入</span>
             </div>
-            <span className="font-heading text-xl font-bold text-income">
+            <span className="font-heading text-xl font-bold text-income tabular-nums">
               ¥{incomeTotal.toLocaleString()}
             </span>
           </div>
-          <div className="bg-card rounded-xl p-4 border border-border">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="bg-card rounded-xl p-4 border border-border flex items-center justify-between sm:block">
+            <div className="flex items-center gap-2 sm:mb-2">
               <TrendingDown className="w-4 h-4 text-expense" />
-              <span className="text-sm text-muted-foreground">年間支出</span>
+              <span className="text-sm text-muted-foreground whitespace-nowrap">年間支出</span>
             </div>
-            <span className="font-heading text-xl font-bold text-expense">
+            <span className="font-heading text-xl font-bold text-expense tabular-nums">
               ¥{expenseTotal.toLocaleString()}
             </span>
           </div>
-          <div className="bg-card rounded-xl p-4 border border-border">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="bg-card rounded-xl p-4 border border-border flex items-center justify-between sm:block">
+            <div className="flex items-center gap-2 sm:mb-2">
               <BarChart3 className="w-4 h-4 text-primary" />
-              <span className="text-sm text-muted-foreground">年間収支</span>
+              <span className="text-sm text-muted-foreground whitespace-nowrap">年間収支</span>
             </div>
-            <span className={`font-heading text-xl font-bold ${netTotal >= 0 ? "text-income" : "text-expense"}`}>
+            <span className={`font-heading text-xl font-bold tabular-nums ${netTotal >= 0 ? "text-income" : "text-expense"}`}>
               {netTotal >= 0 ? "+" : ""}¥{netTotal.toLocaleString()}
             </span>
           </div>
