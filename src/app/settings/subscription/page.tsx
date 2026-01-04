@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { motion } from "framer-motion";
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PLANS } from "@/lib/stripe";
 
-export default function SubscriptionPage() {
+function SubscriptionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { subscription, isLoading, isPremium, plan, refetch } = useSubscription();
@@ -25,12 +25,21 @@ export default function SubscriptionPage() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    if (searchParams.get("success") === "true") {
-      setMessage({ type: "success", text: "プレミアムプランへのアップグレードありがとうございます！" });
-      refetch();
-    } else if (searchParams.get("canceled") === "true") {
-      setMessage({ type: "error", text: "決済がキャンセルされました" });
-    }
+    const syncSubscription = async () => {
+      if (searchParams.get("success") === "true") {
+        // Sync subscription from Stripe (in case webhook is delayed)
+        try {
+          await fetch("/api/stripe/sync", { method: "POST" });
+        } catch (e) {
+          console.error("Sync error:", e);
+        }
+        setMessage({ type: "success", text: "プレミアムプランへのアップグレードありがとうございます！" });
+        refetch();
+      } else if (searchParams.get("canceled") === "true") {
+        setMessage({ type: "error", text: "決済がキャンセルされました" });
+      }
+    };
+    syncSubscription();
   }, [searchParams, refetch]);
 
   const handleUpgrade = async () => {
@@ -252,5 +261,21 @@ export default function SubscriptionPage() {
         </p>
       </div>
     </MainLayout>
+  );
+}
+
+export default function SubscriptionPage() {
+  return (
+    <Suspense
+      fallback={
+        <MainLayout>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        </MainLayout>
+      }
+    >
+      <SubscriptionContent />
+    </Suspense>
   );
 }

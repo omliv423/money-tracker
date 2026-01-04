@@ -24,6 +24,8 @@ import {
 } from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase } from "@/lib/supabase";
+import { useViewMode } from "@/components/providers/ViewModeProvider";
+import { useAuth } from "@/components/providers/AuthProvider";
 import {
   PieChart,
   Pie,
@@ -53,6 +55,7 @@ interface TransactionLine {
   category: { id: string; name: string; parent_id: string | null } | null;
   transaction: {
     date: string;
+    user_id: string;
     counterparty: { id: string; name: string } | null;
   } | null;
 }
@@ -81,6 +84,8 @@ interface MonthlyData {
 
 export default function PLReportPage() {
   const router = useRouter();
+  const { filterByUser } = useViewMode();
+  const { user } = useAuth();
   const [currentMonth, setCurrentMonth] = useState(new Date(2000, 0, 1)); // Dummy initial, updated in useEffect
   const [isMonthInitialized, setIsMonthInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,7 +120,7 @@ export default function PLReportPage() {
           amortization_start,
           amortization_end,
           category:categories(id, name, parent_id, type),
-          transaction:transactions(date, counterparty:counterparties(id, name))
+          transaction:transactions(date, user_id, counterparty:counterparties(id, name))
         `);
 
       // Fetch all categories for parent lookup
@@ -132,10 +137,18 @@ export default function PLReportPage() {
         categoryMap.set(cat.id, { name: cat.name, parent_id: cat.parent_id });
       });
 
+      // Filter lines by user when in personal mode
+      let filteredLines = lines || [];
+      if (filterByUser && user?.id) {
+        filteredLines = filteredLines.filter((line: any) =>
+          line.transaction?.user_id === user.id
+        );
+      }
+
       const incomeMap = new Map<string, CategorySummary>();
       const expenseMap = new Map<string, CategorySummary>();
 
-      (lines || []).forEach((line) => {
+      (filteredLines).forEach((line) => {
         const typedLine = line as unknown as TransactionLine;
         if (!typedLine.transaction || !typedLine.category) return;
 
@@ -272,7 +285,7 @@ export default function PLReportPage() {
         let monthIncome = 0;
         let monthExpense = 0;
 
-        (lines || []).forEach((line) => {
+        (filteredLines).forEach((line) => {
           const typedLine = line as unknown as TransactionLine;
           if (!typedLine.transaction || !typedLine.category) return;
           if (typedLine.line_type !== "income" && typedLine.line_type !== "expense") return;
@@ -324,7 +337,7 @@ export default function PLReportPage() {
     }
 
     fetchData();
-  }, [currentMonth]);
+  }, [currentMonth, filterByUser, user?.id]);
 
   const netIncome = totalIncome - totalExpense;
 

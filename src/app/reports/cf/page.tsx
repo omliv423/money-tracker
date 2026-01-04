@@ -17,6 +17,8 @@ import {
 import { format, startOfMonth, endOfMonth, addMonths, subMonths } from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase } from "@/lib/supabase";
+import { useViewMode } from "@/components/providers/ViewModeProvider";
+import { useAuth } from "@/components/providers/AuthProvider";
 import {
   ResponsiveContainer,
   BarChart,
@@ -69,6 +71,8 @@ interface MonthlyData {
 
 export default function CFReportPage() {
   const router = useRouter();
+  const { filterByUser } = useViewMode();
+  const { user } = useAuth();
   // Use dummy date to avoid hydration mismatch, will be set to current date in useEffect
   const [currentMonth, setCurrentMonth] = useState(new Date(2000, 0, 1));
   const [isMonthInitialized, setIsMonthInitialized] = useState(false);
@@ -95,28 +99,39 @@ export default function CFReportPage() {
       const monthEnd = format(endOfMonth(currentMonth), "yyyy-MM-dd");
 
       // Fetch transactions with lines for category breakdown
+      let txQuery = supabase
+        .from("transactions")
+        .select(`
+          id,
+          date,
+          payment_date,
+          description,
+          total_amount,
+          user_id,
+          account:accounts!transactions_account_id_fkey(id, name),
+          counterparty:counterparties(id, name),
+          transaction_lines(amount, line_type, category:categories(id, name, parent_id, type))
+        `)
+        .gte("payment_date", monthStart)
+        .lte("payment_date", monthEnd)
+        .order("payment_date", { ascending: false });
+      if (filterByUser && user?.id) {
+        txQuery = txQuery.eq("user_id", user.id);
+      }
+
+      // Fetch settlements (精算) for this month
+      let settlementsQuery = supabase
+        .from("settlements")
+        .select("*")
+        .gte("date", monthStart)
+        .lte("date", monthEnd);
+      if (filterByUser && user?.id) {
+        settlementsQuery = settlementsQuery.eq("user_id", user.id);
+      }
+
       const [txResponse, settlementsResponse] = await Promise.all([
-        supabase
-          .from("transactions")
-          .select(`
-            id,
-            date,
-            payment_date,
-            description,
-            total_amount,
-            account:accounts!transactions_account_id_fkey(id, name),
-            counterparty:counterparties(id, name),
-            transaction_lines(amount, line_type, category:categories(id, name, parent_id, type))
-          `)
-          .gte("payment_date", monthStart)
-          .lte("payment_date", monthEnd)
-          .order("payment_date", { ascending: false }),
-        // Fetch settlements (精算) for this month
-        supabase
-          .from("settlements")
-          .select("*")
-          .gte("date", monthStart)
-          .lte("date", monthEnd),
+        txQuery,
+        settlementsQuery,
       ]);
 
       const { data: transactions, error } = txResponse;
@@ -237,19 +252,30 @@ export default function CFReportPage() {
         const mStart = format(startOfMonth(targetMonth), "yyyy-MM-dd");
         const mEnd = format(endOfMonth(targetMonth), "yyyy-MM-dd");
 
+        let monthTxQuery = supabase
+          .from("transactions")
+          .select(`
+            user_id,
+            transaction_lines(amount, line_type, category:categories(type))
+          `)
+          .gte("payment_date", mStart)
+          .lte("payment_date", mEnd);
+        if (filterByUser && user?.id) {
+          monthTxQuery = monthTxQuery.eq("user_id", user.id);
+        }
+
+        let monthSettlementsQuery = supabase
+          .from("settlements")
+          .select("amount, user_id")
+          .gte("date", mStart)
+          .lte("date", mEnd);
+        if (filterByUser && user?.id) {
+          monthSettlementsQuery = monthSettlementsQuery.eq("user_id", user.id);
+        }
+
         const [monthTxRes, monthSettlementsRes] = await Promise.all([
-          supabase
-            .from("transactions")
-            .select(`
-              transaction_lines(amount, line_type, category:categories(type))
-            `)
-            .gte("payment_date", mStart)
-            .lte("payment_date", mEnd),
-          supabase
-            .from("settlements")
-            .select("amount")
-            .gte("date", mStart)
-            .lte("date", mEnd),
+          monthTxQuery,
+          monthSettlementsQuery,
         ]);
 
         const monthTx = monthTxRes.data;
@@ -289,7 +315,7 @@ export default function CFReportPage() {
     }
 
     fetchData();
-  }, [currentMonth, isMonthInitialized]);
+  }, [currentMonth, isMonthInitialized, filterByUser, user?.id]);
 
   const netCashFlow = totalInflow - totalOutflow;
 

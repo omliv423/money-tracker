@@ -9,6 +9,8 @@ import { ChevronRight, Calendar, Trash2, Filter, X } from "lucide-react";
 import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useViewMode } from "@/components/providers/ViewModeProvider";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -58,6 +60,8 @@ interface Filters {
 
 function TransactionsContent() {
   const searchParams = useSearchParams();
+  const { filterByUser } = useViewMode();
+  const { user } = useAuth();
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -103,24 +107,39 @@ function TransactionsContent() {
   const fetchTransactions = async () => {
     setIsLoading(true);
 
-    // Fetch accounts and categories in parallel
+    // Build transactions query with optional user filter
+    let txQuery = supabase
+      .from("transactions")
+      .select(`
+        id,
+        date,
+        payment_date,
+        description,
+        total_amount,
+        account_id,
+        user_id,
+        account:accounts!transactions_account_id_fkey(name),
+        transaction_lines(amount, line_type, category_id)
+      `)
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    // Filter by user when in personal mode
+    if (filterByUser && user?.id) {
+      txQuery = txQuery.eq("user_id", user.id);
+    }
+
+    // Build accounts query with optional user filter
+    let accountsQuery = supabase.from("accounts").select("*").eq("is_active", true).order("name");
+    if (filterByUser && user?.id) {
+      accountsQuery = accountsQuery.eq("user_id", user.id);
+    }
+
+    // Fetch in parallel
     const [txResponse, accountsResponse, categoriesResponse] = await Promise.all([
-      supabase
-        .from("transactions")
-        .select(`
-          id,
-          date,
-          payment_date,
-          description,
-          total_amount,
-          account_id,
-          account:accounts!transactions_account_id_fkey(name),
-          transaction_lines(amount, line_type, category_id)
-        `)
-        .order("date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(500),
-      supabase.from("accounts").select("*").eq("is_active", true).order("name"),
+      txQuery,
+      accountsQuery,
       supabase.from("categories").select("*").eq("is_active", true).order("name"),
     ]);
 
@@ -138,7 +157,7 @@ function TransactionsContent() {
 
   useEffect(() => {
     fetchTransactions();
-  }, []);
+  }, [filterByUser, user?.id]);
 
   // Apply filters and group transactions
   const groupedTransactions = useMemo(() => {

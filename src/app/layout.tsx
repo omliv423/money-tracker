@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Noto_Sans_JP } from "next/font/google";
 import { AuthProvider } from "@/components/providers/AuthProvider";
+import { ViewModeProvider } from "@/components/providers/ViewModeProvider";
 import "./globals.css";
 
 // Expressive display sans for headings
@@ -51,7 +52,9 @@ export default function RootLayout({
       <body
         className={`${spaceGrotesk.variable} ${notoSansJP.variable} font-body antialiased text-foreground`}
       >
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <ViewModeProvider>{children}</ViewModeProvider>
+        </AuthProvider>
       </body>
     </html>
   );

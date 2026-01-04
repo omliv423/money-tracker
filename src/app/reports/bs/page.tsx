@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, ChevronLeft, Tag, PieChart as PieChartIcon, Landmark, TrendingUp, TrendingDown } from "lucide-react";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useViewMode } from "@/components/providers/ViewModeProvider";
+import { useAuth } from "@/components/providers/AuthProvider";
 import {
   PieChart,
   Pie,
@@ -80,6 +82,8 @@ interface AccountReceivable {
 
 export default function BSReportPage() {
   const router = useRouter();
+  const { filterByUser } = useViewMode();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [cashBalances, setCashBalances] = useState<CashBalance[]>([]);
@@ -136,15 +140,19 @@ export default function BSReportPage() {
       const { startDate, endDate } = getMonthRange(selectedMonth);
 
       // Fetch accounts
-      const { data: accountData } = await supabase
+      let accountsQuery = supabase
         .from("accounts")
         .select("*")
         .eq("is_active", true)
         .order("name");
+      if (filterByUser && user?.id) {
+        accountsQuery = accountsQuery.eq("user_id", user.id);
+      }
+      const { data: accountData } = await accountsQuery;
 
       // Fetch ALL transactions to calculate balances
       // is_cash_settled = true または settlement_account_id が設定済みの取引を取得
-      const { data: allTransactions } = await supabase
+      let txQuery = supabase
         .from("transactions")
         .select(`
           id,
@@ -153,6 +161,7 @@ export default function BSReportPage() {
           total_amount,
           settled_amount,
           account_id,
+          user_id,
           is_cash_settled,
           settlement_account_id,
           settlement_date,
@@ -160,6 +169,10 @@ export default function BSReportPage() {
           transaction_lines(amount, line_type)
         `)
         .order("date", { ascending: true });
+      if (filterByUser && user?.id) {
+        txQuery = txQuery.eq("user_id", user.id);
+      }
+      const { data: allTransactions } = await txQuery;
 
       // 消し込み済み または 部分消し込みの取引をフィルタ
       const settledTransactions = (allTransactions || []).filter((tx: any) =>
@@ -501,7 +514,7 @@ export default function BSReportPage() {
     }
 
     fetchData();
-  }, [selectedMonth]);
+  }, [selectedMonth, filterByUser, user?.id]);
 
   const toggleAccountExpand = (accountId: string) => {
     setExpandedAccounts((prev) => {

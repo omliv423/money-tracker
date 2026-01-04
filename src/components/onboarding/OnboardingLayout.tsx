@@ -19,7 +19,7 @@ export function OnboardingLayout({
   description,
 }: OnboardingLayoutProps) {
   return (
-    <div className="min-h-screen px-4 py-10 safe-area-top">
+    <div className="min-h-screen px-4 pb-10 safe-area-top" style={{ paddingTop: '80px' }}>
       <div className="mx-auto w-full max-w-md">
         {/* Progress Indicator */}
         <div className="flex items-center justify-center gap-2 mb-8">

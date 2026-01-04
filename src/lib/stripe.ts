@@ -4,7 +4,7 @@ import Stripe from "stripe";
 // This allows the app to build without Stripe configured
 export const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: "2024-12-18.acacia",
+      apiVersion: "2025-12-15.clover",
       typescript: true,
     })
   : null as unknown as Stripe;
@@ -34,7 +34,6 @@ export const PLANS = {
       "パートナー共有",
       "定期取引",
       "クイック入力",
-      "優先サポート",
     ],
     limits: {
       accounts: Infinity,

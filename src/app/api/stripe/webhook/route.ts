@@ -3,6 +3,21 @@ import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 
+// Define the shape we need from Stripe subscription
+interface StripeSubscriptionItem {
+  current_period_start: number;
+  current_period_end: number;
+}
+
+interface StripeSubscriptionData {
+  cancel_at_period_end: boolean;
+  customer: string;
+  status: string;
+  items: {
+    data: StripeSubscriptionItem[];
+  };
+}
+
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 // Use service role for webhook (bypasses RLS)
@@ -37,7 +52,8 @@ export async function POST(request: NextRequest) {
 
         if (userId && subscriptionId) {
           // Get subscription details
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId) as unknown as StripeSubscriptionData;
+          const item = stripeSubscription.items.data[0];
 
           await supabaseAdmin
             .from("subscriptions")
@@ -45,8 +61,8 @@ export async function POST(request: NextRequest) {
               stripe_subscription_id: subscriptionId,
               plan: "premium",
               status: "active",
-              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              current_period_start: new Date(item.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(item.current_period_end * 1000).toISOString(),
               updated_at: new Date().toISOString(),
             })
             .eq("user_id", userId);
@@ -55,8 +71,9 @@ export async function POST(request: NextRequest) {
       }
 
       case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const customerId = subscription.customer as string;
+        const subscription = event.data.object as unknown as StripeSubscriptionData;
+        const customerId = subscription.customer;
+        const item = subscription.items.data[0];
 
         // Find user by customer ID
         const { data: sub } = await supabaseAdmin
@@ -72,8 +89,8 @@ export async function POST(request: NextRequest) {
               status: subscription.status === "active" ? "active" :
                       subscription.status === "trialing" ? "trialing" :
                       subscription.status === "past_due" ? "past_due" : "canceled",
-              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              current_period_start: new Date(item.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(item.current_period_end * 1000).toISOString(),
               cancel_at_period_end: subscription.cancel_at_period_end,
               updated_at: new Date().toISOString(),
             })
@@ -83,8 +100,8 @@ export async function POST(request: NextRequest) {
       }
 
       case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const customerId = subscription.customer as string;
+        const subscription = event.data.object as unknown as StripeSubscriptionData;
+        const customerId = subscription.customer;
 
         // Find user by customer ID
         const { data: sub } = await supabaseAdmin

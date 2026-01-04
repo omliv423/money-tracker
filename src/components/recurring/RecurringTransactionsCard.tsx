@@ -6,6 +6,7 @@ import { RefreshCw, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useViewMode } from "@/components/providers/ViewModeProvider";
 import { format, addDays, lastDayOfMonth, setDate } from "date-fns";
 
 type RecurringTransaction = {
@@ -26,6 +27,7 @@ type RecurringTransaction = {
 
 export function RecurringTransactionsCard() {
   const { user } = useAuth();
+  const { filterByUser } = useViewMode();
   const [items, setItems] = useState<RecurringTransaction[]>([]);
   const [registeredThisMonth, setRegisteredThisMonth] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -51,11 +53,18 @@ export function RecurringTransactionsCard() {
     const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
     const monthEnd = format(lastDayOfMonth(now), "yyyy-MM-dd");
 
-    const { data: thisMonthTxs } = await supabase
+    let txQuery = supabase
       .from("transactions")
-      .select("description")
+      .select("description, user_id")
       .gte("date", monthStart)
       .lte("date", monthEnd);
+
+    // In personal mode, only check the current user's transactions
+    if (filterByUser && user?.id) {
+      txQuery = txQuery.eq("user_id", user.id);
+    }
+
+    const { data: thisMonthTxs } = await txQuery;
 
     const registeredDescriptions = new Set(
       (thisMonthTxs || []).map((tx) => tx.description?.toLowerCase())
@@ -82,7 +91,7 @@ export function RecurringTransactionsCard() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [filterByUser, user?.id]);
 
   const handleRegister = async (item: RecurringTransaction) => {
     setRegisteringId(item.id);

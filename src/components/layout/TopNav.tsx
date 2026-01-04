@@ -8,8 +8,11 @@ import {
   PieChart,
   Users,
   Settings,
+  User,
+  Users2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useViewMode } from "@/components/providers/ViewModeProvider";
 
 const navItems = [
   { href: "/", icon: PlusCircle, label: "記録" },
@@ -21,13 +24,44 @@ const navItems = [
 
 export function TopNav() {
   const pathname = usePathname();
+  const { viewMode, setViewMode, isHouseholdMember } = useViewMode();
 
   return (
     <nav className="sticky top-0 z-40 hidden md:block">
       <div className="border-b border-border/70 bg-card/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-          <div className="font-heading text-lg font-semibold tracking-tight">
-            Money Tracker
+          <div className="flex items-center gap-4">
+            <div className="font-heading text-lg font-semibold tracking-tight">
+              Money Tracker
+            </div>
+            {isHouseholdMember && (
+              <div className="flex items-center gap-1 rounded-full bg-secondary p-1">
+                <button
+                  onClick={() => setViewMode("personal")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                    viewMode === "personal"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <User className="h-3.5 w-3.5" />
+                  個人
+                </button>
+                <button
+                  onClick={() => setViewMode("shared")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                    viewMode === "shared"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Users2 className="h-3.5 w-3.5" />
+                  共有
+                </button>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {navItems.map((item) => {
