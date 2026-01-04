@@ -4,9 +4,15 @@ import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Wallet, Tag, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark, FileText, HelpCircle } from "lucide-react";
+import { Wallet, Tag, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark, FileText, HelpCircle, Crown } from "lucide-react";
 
 const settingsItems = [
+  {
+    title: "プラン",
+    description: "プランの確認・アップグレード",
+    icon: Crown,
+    href: "/settings/subscription",
+  },
   {
     title: "パートナー共有",
     description: "パートナーと家計を共有",

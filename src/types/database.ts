@@ -51,6 +51,23 @@ export interface Settlement {
   created_at: string;
 }
 
+export type SubscriptionPlan = "free" | "premium";
+export type SubscriptionStatus = "active" | "canceled" | "past_due" | "trialing";
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // Supabase Database type
 export interface Database {
   public: {
@@ -79,6 +96,11 @@ export interface Database {
         Row: Settlement;
         Insert: Omit<Settlement, "id" | "created_at">;
         Update: Partial<Omit<Settlement, "id" | "created_at">>;
+      };
+      subscriptions: {
+        Row: Subscription;
+        Insert: Omit<Subscription, "id" | "created_at" | "updated_at">;
+        Update: Partial<Omit<Subscription, "id" | "created_at">>;
       };
     };
   };
