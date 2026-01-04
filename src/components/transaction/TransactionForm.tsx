@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Check, Calendar, Wallet, FileText, CreditCard, Store, AlertTriangle, UserPlus } from "lucide-react";
+import { Plus, Check, Calendar, Wallet, FileText, CreditCard, AlertTriangle, UserPlus } from "lucide-react";
 import { format, differenceInMonths, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,6 @@ export function TransactionForm() {
   const [isDateInitialized, setIsDateInitialized] = useState(false);
   const [description, setDescription] = useState("");
   const [accountId, setAccountId] = useState("");
-  const [counterpartyId, setCounterpartyId] = useState<string | null>(null);
   const [paidByOther, setPaidByOther] = useState(false); // 立替えてもらった
   const [paidByCounterpartyId, setPaidByCounterpartyId] = useState<string | null>(null); // 立替えてくれた人のID
   const [newCounterpartyName, setNewCounterpartyName] = useState(""); // 新規相手先名
@@ -300,7 +299,6 @@ export function TransactionForm() {
           payment_date: paidByOther ? accrualDate : paymentDate, // 立替えてもらった場合は発生日
           description,
           account_id: transactionAccountId,
-          counterparty_id: counterpartyId,
           total_amount: totalAmount,
           is_cash_settled: isCashSettled,
           settled_amount: settledAmount,
@@ -477,7 +475,6 @@ export function TransactionForm() {
       setDescription("");
       setAccrualDate(format(new Date(), "yyyy-MM-dd"));
       setPaymentDate(format(new Date(), "yyyy-MM-dd"));
-      setCounterpartyId(null);
       setPaidByOther(false);
       setPaidByCounterpartyId(null);
       setNewCounterpartyName("");
@@ -775,31 +772,6 @@ export function TransactionForm() {
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-
-            {/* Counterparty */}
-            {counterparties.length > 0 && (
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Store className="w-3 h-3" /> {isIncomeTransaction ? "入金元（任意）" : "相手先（任意）"}
-                </label>
-                <Select
-                  value={counterpartyId || "none"}
-                  onValueChange={(v) => setCounterpartyId(v === "none" ? null : v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="相手先を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">指定なし</SelectItem>
-                    {counterparties.map((cp) => (
-                      <SelectItem key={cp.id} value={cp.id}>
-                        {cp.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
 
           <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
