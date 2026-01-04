@@ -43,6 +43,9 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith(path)
   );
 
+  // Onboarding paths
+  const isOnboardingPath = request.nextUrl.pathname.startsWith("/onboarding");
+
   if (!user && !isPublicPath) {
     // No user and trying to access protected route, redirect to login
     const url = request.nextUrl.clone();
@@ -55,6 +58,34 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
+  }
+
+  // Onboarding check: if user has no accounts, redirect to onboarding
+  if (user && !isPublicPath && !isOnboardingPath) {
+    const { count } = await supabase
+      .from("accounts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id);
+
+    if (count === 0) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/onboarding/accounts";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // If user has accounts but is on onboarding, redirect to home
+  if (user && isOnboardingPath) {
+    const { count } = await supabase
+      .from("accounts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id);
+
+    if (count && count > 0) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
