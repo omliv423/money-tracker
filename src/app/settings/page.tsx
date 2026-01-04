@@ -4,7 +4,7 @@ import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Wallet, Tag, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark, FileText } from "lucide-react";
+import { Wallet, Tag, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark, FileText, HelpCircle } from "lucide-react";
 
 const settingsItems = [
   {
@@ -60,6 +60,12 @@ const settingsItems = [
     description: "取引先・店舗を追加・編集",
     icon: Store,
     href: "/settings/counterparties",
+  },
+  {
+    title: "使い方ガイド",
+    description: "アプリの使い方を確認",
+    icon: HelpCircle,
+    href: "/help",
   },
   {
     title: "利用規約",
