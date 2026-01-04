@@ -14,11 +14,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CategoryPicker } from "@/components/transaction/CategoryPicker";
 import { supabase, type Tables } from "@/lib/supabase";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 type Account = Tables<"accounts">;
 type Category = Tables<"categories">;
+type Counterparty = Tables<"counterparties">;
 
 type LineData = {
   id: string;
@@ -37,6 +39,7 @@ export default function NewRecurringTransactionPage() {
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -53,9 +56,10 @@ export default function NewRecurringTransactionPage() {
   useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      const [accountsRes, categoriesRes] = await Promise.all([
+      const [accountsRes, categoriesRes, counterpartiesRes] = await Promise.all([
         supabase.from("accounts").select("*").eq("is_active", true).order("name"),
         supabase.from("categories").select("*").eq("is_active", true).order("name"),
+        supabase.from("counterparties").select("*").eq("is_active", true).order("name"),
       ]);
 
       if (accountsRes.data) {
@@ -66,6 +70,9 @@ export default function NewRecurringTransactionPage() {
       }
       if (categoriesRes.data) {
         setCategories(categoriesRes.data);
+      }
+      if (counterpartiesRes.data) {
+        setCounterparties(counterpartiesRes.data);
       }
       setIsLoading(false);
     }
@@ -139,9 +146,6 @@ export default function NewRecurringTransactionPage() {
     setIsSaving(false);
     router.push("/settings/recurring");
   };
-
-  const expenseCategories = categories.filter((c) => c.type === "expense");
-  const incomeCategories = categories.filter((c) => c.type === "income");
 
   if (isLoading) {
     return (
@@ -241,22 +245,19 @@ export default function NewRecurringTransactionPage() {
               </div>
               <div>
                 <label className="text-sm text-muted-foreground mb-1 block">
-                  支払い遅延日数
+                  支払い日調整（日）
                 </label>
-                <Select
-                  value={String(paymentDelayDays)}
-                  onValueChange={(v) => setPaymentDelayDays(Number(v))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">同日</SelectItem>
-                    <SelectItem value="27">翌月27日</SelectItem>
-                    <SelectItem value="30">翌月末</SelectItem>
-                    <SelectItem value="57">翌々月27日</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input
+                  type="number"
+                  value={paymentDelayDays}
+                  onChange={(e) => setPaymentDelayDays(Number(e.target.value))}
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {paymentDelayDays === 0 ? "同日支払い" :
+                   paymentDelayDays > 0 ? `発生日の${paymentDelayDays}日後` :
+                   `発生日の${Math.abs(paymentDelayDays)}日前`}
+                </p>
               </div>
             </div>
 
@@ -335,38 +336,35 @@ export default function NewRecurringTransactionPage() {
                       <label className="text-xs text-muted-foreground mb-1 block">
                         カテゴリ
                       </label>
-                      <Select
-                        value={line.categoryId}
-                        onValueChange={(v) => handleLineChange(line.id, "categoryId", v)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="カテゴリを選択" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(line.lineType === "income" ? incomeCategories : expenseCategories).map(
-                            (cat) => (
-                              <SelectItem key={cat.id} value={cat.id}>
-                                {cat.name}
-                              </SelectItem>
-                            )
-                          )}
-                        </SelectContent>
-                      </Select>
+                      <CategoryPicker
+                        categories={categories}
+                        selectedId={line.categoryId}
+                        onSelect={(v) => handleLineChange(line.id, "categoryId", v)}
+                        type={line.lineType === "income" ? "income" : "expense"}
+                      />
                     </div>
 
                     {/* Counterparty for asset/liability */}
                     {(line.lineType === "asset" || line.lineType === "liability") && (
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          相手先
+                          {line.lineType === "asset" ? "立替先" : "借入元"}
                         </label>
-                        <Input
+                        <Select
                           value={line.counterparty || ""}
-                          onChange={(e) =>
-                            handleLineChange(line.id, "counterparty", e.target.value || null)
-                          }
-                          placeholder="例: あさみ"
-                        />
+                          onValueChange={(v) => handleLineChange(line.id, "counterparty", v || null)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="相手先を選択" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {counterparties.map((cp) => (
+                              <SelectItem key={cp.id} value={cp.name}>
+                                {cp.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     )}
                   </div>
