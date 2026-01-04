@@ -50,7 +50,8 @@ export default function EditRecurringTransactionPage() {
   const [description, setDescription] = useState("");
   const [accountId, setAccountId] = useState("");
   const [dayOfMonth, setDayOfMonth] = useState(1);
-  const [paymentDelayDays, setPaymentDelayDays] = useState(0);
+  const [paymentMonthOffset, setPaymentMonthOffset] = useState(0);
+  const [paymentDay, setPaymentDay] = useState<number | null>(null);
   const [lines, setLines] = useState<LineData[]>([]);
 
   useEffect(() => {
@@ -79,7 +80,8 @@ export default function EditRecurringTransactionPage() {
         setDescription(recurringRes.data.description || "");
         setAccountId(recurringRes.data.account_id || "");
         setDayOfMonth(recurringRes.data.day_of_month || 1);
-        setPaymentDelayDays(recurringRes.data.payment_delay_days || 0);
+        setPaymentMonthOffset(recurringRes.data.payment_month_offset || 0);
+        setPaymentDay(recurringRes.data.payment_day);
       }
       if (linesRes.data) {
         setLines(
@@ -141,7 +143,8 @@ export default function EditRecurringTransactionPage() {
         account_id: accountId || null,
         total_amount: totalAmount,
         day_of_month: dayOfMonth,
-        payment_delay_days: paymentDelayDays,
+        payment_month_offset: paymentMonthOffset,
+        payment_day: paymentDay,
       })
       .eq("id", id);
 
@@ -240,20 +243,58 @@ export default function EditRecurringTransactionPage() {
               </Select>
             </div>
 
-            {/* Day of month & Payment delay */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-muted-foreground mb-1 block">
-                  発生日（毎月）
-                </label>
+            {/* Day of month */}
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">
+                発生日（毎月）
+              </label>
+              <Select
+                value={String(dayOfMonth)}
+                onValueChange={(v) => setDayOfMonth(Number(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                    <SelectItem key={day} value={String(day)}>
+                      {day}日
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Payment schedule */}
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">
+                支払い月
+              </label>
+              <div className="grid grid-cols-2 gap-3">
                 <Select
-                  value={String(dayOfMonth)}
-                  onValueChange={(v) => setDayOfMonth(Number(v))}
+                  value={String(paymentMonthOffset)}
+                  onValueChange={(v) => setPaymentMonthOffset(Number(v))}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="-2">前々月</SelectItem>
+                    <SelectItem value="-1">前月</SelectItem>
+                    <SelectItem value="0">同月</SelectItem>
+                    <SelectItem value="1">翌月</SelectItem>
+                    <SelectItem value="2">翌々月</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={paymentDay === null ? "same" : String(paymentDay)}
+                  onValueChange={(v) => setPaymentDay(v === "same" ? null : Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="same">発生日と同じ日</SelectItem>
                     {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
                       <SelectItem key={day} value={String(day)}>
                         {day}日
@@ -262,22 +303,14 @@ export default function EditRecurringTransactionPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <label className="text-sm text-muted-foreground mb-1 block">
-                  支払い日調整（日）
-                </label>
-                <Input
-                  type="number"
-                  value={paymentDelayDays}
-                  onChange={(e) => setPaymentDelayDays(Number(e.target.value))}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {paymentDelayDays === 0 ? "同日支払い" :
-                   paymentDelayDays > 0 ? `発生日の${paymentDelayDays}日後` :
-                   `発生日の${Math.abs(paymentDelayDays)}日前`}
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                例: 発生日が15日の場合 → 支払いは
+                {paymentMonthOffset === -2 ? "前々月" :
+                 paymentMonthOffset === -1 ? "前月" :
+                 paymentMonthOffset === 0 ? "同月" :
+                 paymentMonthOffset === 1 ? "翌月" : "翌々月"}
+                {paymentDay === null ? "15日" : `${paymentDay}日`}
+              </p>
             </div>
 
             {/* Lines */}

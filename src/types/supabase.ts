@@ -127,6 +127,8 @@ export type Database = {
           total_amount: number
           day_of_month: number | null
           payment_delay_days: number
+          payment_month_offset: number
+          payment_day: number | null
           is_active: boolean
           created_at: string
           user_id: string | null
@@ -139,6 +141,8 @@ export type Database = {
           total_amount: number
           day_of_month?: number | null
           payment_delay_days?: number
+          payment_month_offset?: number
+          payment_day?: number | null
           is_active?: boolean
           created_at?: string
           user_id?: string | null
@@ -151,6 +155,8 @@ export type Database = {
           total_amount?: number
           day_of_month?: number | null
           payment_delay_days?: number
+          payment_month_offset?: number
+          payment_day?: number | null
           is_active?: boolean
           created_at?: string
           user_id?: string | null
