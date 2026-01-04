@@ -4,7 +4,7 @@ import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Wallet, Tag, Database, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark } from "lucide-react";
+import { Wallet, Tag, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark, FileText } from "lucide-react";
 
 const settingsItems = [
   {
@@ -62,10 +62,10 @@ const settingsItems = [
     href: "/settings/counterparties",
   },
   {
-    title: "データ管理",
-    description: "エクスポート・インポート",
-    icon: Database,
-    href: "/settings/data",
+    title: "利用規約",
+    description: "サービス利用規約",
+    icon: FileText,
+    href: "/terms",
   },
   {
     title: "アプリについて",
