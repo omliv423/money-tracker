@@ -19,8 +19,8 @@ export function OnboardingLayout({
   description,
 }: OnboardingLayoutProps) {
   return (
-    <div className="flex flex-col items-center justify-start min-h-screen px-6 py-10 safe-area-top">
-      <div className="w-full max-w-lg">
+    <div className="min-h-screen px-4 py-10 safe-area-top">
+      <div className="mx-auto w-full max-w-md">
         {/* Progress Indicator */}
         <div className="flex items-center justify-center gap-2 mb-8">
           {Array.from({ length: totalSteps }, (_, i) => (
