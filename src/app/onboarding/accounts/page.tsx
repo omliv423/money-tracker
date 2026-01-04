@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Plus, Trash2, Wallet, CreditCard, Banknote, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -114,16 +114,14 @@ export default function OnboardingAccountsPage() {
           </motion.div>
         )}
 
-        <AnimatePresence mode="popLayout">
+        <div className="space-y-3">
           {accounts.map((account, index) => {
             const TypeIcon = accountTypes.find((t) => t.value === account.type)?.icon || Wallet;
             return (
               <motion.div
                 key={account.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: -100 }}
-                layout
                 className="bg-card rounded-xl p-4 border border-border space-y-3"
               >
                 <div className="flex items-center justify-between">
@@ -167,7 +165,7 @@ export default function OnboardingAccountsPage() {
               </motion.div>
             );
           })}
-        </AnimatePresence>
+        </div>
 
         <Button
           variant="outline"
