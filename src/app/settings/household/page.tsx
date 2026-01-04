@@ -15,6 +15,7 @@ import {
   Loader2,
   Crown,
   Clock,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,6 +95,7 @@ export default function HouseholdSettingsPage() {
     memberId?: string;
   } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
     if (!user) return;
@@ -171,8 +173,9 @@ export default function HouseholdSettingsPage() {
     if (!user) return;
 
     setIsProcessing(true);
+    setError(null);
 
-    const { data, error } = await supabase
+    const { data, error: insertError } = await supabase
       .from("households")
       .insert({
         owner_id: user.id,
@@ -181,7 +184,18 @@ export default function HouseholdSettingsPage() {
       .select()
       .single();
 
-    if (!error && data) {
+    if (insertError) {
+      console.error("Error creating household:", insertError);
+      if (insertError.code === "23505") {
+        setError("既に共有グループを作成済みです。ページを更新してください。");
+      } else {
+        setError(`グループの作成に失敗しました: ${insertError.message}`);
+      }
+      setIsProcessing(false);
+      return;
+    }
+
+    if (data) {
       setHousehold(data);
       setIsOwner(true);
     }
@@ -193,10 +207,11 @@ export default function HouseholdSettingsPage() {
     if (!user || !household || !inviteEmail.trim()) return;
 
     setIsInviting(true);
+    setError(null);
 
     const token = generateInviteToken();
 
-    const { error } = await supabase
+    const { error: insertError } = await supabase
       .from("household_members")
       .insert({
         household_id: household.id,
@@ -206,12 +221,20 @@ export default function HouseholdSettingsPage() {
         status: "pending",
       });
 
-    if (!error) {
-      const baseUrl = window.location.origin;
-      setInviteLink(`${baseUrl}/settings/household/accept?token=${token}`);
-      fetchData();
+    if (insertError) {
+      console.error("Error inviting partner:", insertError);
+      if (insertError.code === "23505") {
+        setError("このメールアドレスは既に招待済みです。");
+      } else {
+        setError(`招待の作成に失敗しました: ${insertError.message}`);
+      }
+      setIsInviting(false);
+      return;
     }
 
+    const baseUrl = window.location.origin;
+    setInviteLink(`${baseUrl}/settings/household/accept?token=${token}`);
+    fetchData();
     setIsInviting(false);
   };
 
@@ -318,6 +341,26 @@ export default function HouseholdSettingsPage() {
             </p>
           </div>
         </div>
+
+        {/* Error message */}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 flex items-start gap-3"
+          >
+            <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-destructive/60 hover:text-destructive"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
 
         {/* Pending invitations for this user */}
         {pendingInvitations.length > 0 && (
