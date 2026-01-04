@@ -116,7 +116,7 @@ export default function CounterpartiesSettingsPage() {
             </button>
             <div>
               <h1 className="font-heading text-xl font-bold">相手先管理</h1>
-              <p className="text-xs text-muted-foreground">どこで使ったかを記録</p>
+              <p className="text-xs text-muted-foreground">立替・精算の相手を管理</p>
             </div>
           </div>
           <Button size="sm" onClick={() => setShowAddDialog(true)}>
