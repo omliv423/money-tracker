@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, Users, Shield } from "lucide-react";
+import Link from "next/link";
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -161,7 +162,11 @@ export default function LoginPage() {
           transition={{ delay: 0.5 }}
           className="mt-10 text-center text-xs text-muted-foreground/70"
         >
-          ログインすることで、利用規約に同意したものとみなされます
+          ログインすることで、
+          <Link href="/terms" className="underline hover:text-foreground transition-colors">
+            利用規約
+          </Link>
+          に同意したものとみなされます
         </motion.p>
       </div>
     </div>
