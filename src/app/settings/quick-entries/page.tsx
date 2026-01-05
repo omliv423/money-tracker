@@ -30,6 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { CategoryPicker } from "@/components/transaction/CategoryPicker";
 import { supabase, type Tables } from "@/lib/supabase";
 import { useAuth } from "@/components/providers/AuthProvider";
 
@@ -152,9 +153,8 @@ export default function QuickEntriesPage() {
     fetchData();
   };
 
-  const expenseCategories = categories.filter((c) => c.type === "expense");
-  const incomeCategories = categories.filter((c) => c.type === "income");
-  const filteredCategories = formLineType === "income" ? incomeCategories : expenseCategories;
+  // カテゴリタイプを決定（income以外はexpenseカテゴリを使用）
+  const categoryType = formLineType === "income" ? "income" : "expense";
 
   if (isLoading) {
     return (
@@ -333,18 +333,12 @@ export default function QuickEntriesPage() {
               <label className="text-sm text-muted-foreground mb-1 block">
                 カテゴリ
               </label>
-              <Select value={formCategoryId} onValueChange={setFormCategoryId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="カテゴリを選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredCategories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategoryPicker
+                categories={categories}
+                selectedId={formCategoryId}
+                onSelect={setFormCategoryId}
+                type={categoryType}
+              />
             </div>
             {(formLineType === "asset" || formLineType === "liability") && (
               <div>

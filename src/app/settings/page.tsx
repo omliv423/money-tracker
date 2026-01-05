@@ -4,7 +4,7 @@ import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Wallet, Tag, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark, FileText, HelpCircle, Crown } from "lucide-react";
+import { Wallet, Tag, Info, ArrowRight, CreditCard, Store, RefreshCw, Zap, PiggyBank, LogOut, Users, Landmark, FileText, HelpCircle, Crown, Download, UserX } from "lucide-react";
 
 const settingsItems = [
   {
@@ -74,6 +74,12 @@ const settingsItems = [
     href: "/help",
   },
   {
+    title: "データエクスポート",
+    description: "取引データをCSVでダウンロード",
+    icon: Download,
+    href: "/settings/export",
+  },
+  {
     title: "利用規約",
     description: "サービス利用規約",
     icon: FileText,
@@ -84,6 +90,12 @@ const settingsItems = [
     description: "バージョン情報",
     icon: Info,
     href: "/settings/about",
+  },
+  {
+    title: "アカウント設定",
+    description: "退会・アカウント削除",
+    icon: UserX,
+    href: "/settings/account",
   },
 ];
 

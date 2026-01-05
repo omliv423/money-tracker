@@ -54,6 +54,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && request.nextUrl.pathname === "/login") {
+    // If user explicitly wants to switch accounts, don't redirect
+    const switchAccount = request.nextUrl.searchParams.get("switch");
+    if (switchAccount === "true") {
+      return supabaseResponse;
+    }
     // User is logged in but on login page, redirect to home
     const url = request.nextUrl.clone();
     url.pathname = "/";

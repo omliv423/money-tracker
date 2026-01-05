@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { TransactionForm } from "@/components/transaction/TransactionForm";
@@ -9,46 +8,9 @@ import { QuickEntryButtons } from "@/components/quick-entry/QuickEntryButtons";
 import { TourGuide } from "@/components/tour/TourGuide";
 import { useTour } from "@/hooks/useTour";
 import { ArrowLeftRight } from "lucide-react";
-import { AboutModal } from "@/components/about/AboutModal";
-import { useAuth } from "@/components/providers/AuthProvider";
-import { supabase } from "@/lib/supabase";
 
 export default function Home() {
   const { showTour, completeTour } = useTour();
-  const { user } = useAuth();
-  const [showAbout, setShowAbout] = useState(false);
-
-  // 初回ログイン時にAboutモーダルを表示
-  useEffect(() => {
-    async function checkFirstLogin() {
-      if (!user?.id) return;
-
-      const { data } = await supabase
-        .from("subscriptions")
-        .select("has_seen_about")
-        .eq("user_id", user.id)
-        .single();
-
-      if (data && data.has_seen_about === false) {
-        // 少し遅延させて自然に表示
-        setTimeout(() => setShowAbout(true), 500);
-      }
-    }
-
-    checkFirstLogin();
-  }, [user?.id]);
-
-  const handleAboutClose = async () => {
-    setShowAbout(false);
-
-    // フラグを更新
-    if (user?.id) {
-      await supabase
-        .from("subscriptions")
-        .update({ has_seen_about: true })
-        .eq("user_id", user.id);
-    }
-  };
 
   return (
     <MainLayout>
@@ -77,9 +39,6 @@ export default function Home() {
           <QuickEntryButtons />
         </div>
       </div>
-
-      {/* 初回ログイン時のAboutモーダル */}
-      <AboutModal isOpen={showAbout} onClose={handleAboutClose} />
     </MainLayout>
   );
 }
