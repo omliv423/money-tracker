@@ -46,6 +46,9 @@ export async function middleware(request: NextRequest) {
   // Onboarding paths
   const isOnboardingPath = request.nextUrl.pathname.startsWith("/onboarding");
 
+  // Admin path (skip onboarding check)
+  const isAdminPath = request.nextUrl.pathname.startsWith("/admin");
+
   if (!user && !isPublicPath) {
     // No user and trying to access protected route, redirect to login
     const url = request.nextUrl.clone();
@@ -66,7 +69,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Onboarding check: if user has no accounts, redirect to onboarding
-  if (user && !isPublicPath && !isOnboardingPath) {
+  if (user && !isPublicPath && !isOnboardingPath && !isAdminPath) {
     const { count } = await supabase
       .from("accounts")
       .select("*", { count: "exact", head: true })
