@@ -45,9 +45,9 @@ async function checkUsage() {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Check user count
+  // Check user count (via subscriptions table which has one row per user)
   const { count: userCount } = await supabase
-    .from("app_users")
+    .from("subscriptions")
     .select("*", { count: "exact", head: true });
 
   console.log(`Users: ${userCount ?? 0}`);
