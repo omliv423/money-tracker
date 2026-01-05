@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Calendar, CreditCard, Wallet, Tag, Clock, Pencil, Trash2, Plus, X, Check } from "lucide-react";
+import { ArrowLeft, Calendar, CreditCard, Wallet, Tag, Clock, Pencil, Trash2, Plus, X, Check, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import { supabase, type Tables } from "@/lib/supabase";
 
 type Account = Tables<"accounts">;
 type Category = Tables<"categories">;
+type Counterparty = Tables<"counterparties">;
 
 interface TransactionLine {
   id: string;
@@ -82,6 +83,7 @@ export default function TransactionDetailPage({
   // Master data
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
 
   // Edit form state
   const [editDescription, setEditDescription] = useState("");
@@ -90,9 +92,15 @@ export default function TransactionDetailPage({
   const [editAccountId, setEditAccountId] = useState("");
   const [editLines, setEditLines] = useState<TransactionLine[]>([]);
 
+  // 立替えてもらった
+  const [paidByOther, setPaidByOther] = useState(false);
+  const [paidByCounterpartyId, setPaidByCounterpartyId] = useState<string | null>(null);
+  const [newCounterpartyName, setNewCounterpartyName] = useState("");
+  const [showNewCounterpartyInput, setShowNewCounterpartyInput] = useState(false);
+
   useEffect(() => {
     async function fetchData() {
-      const [transactionRes, accountsRes, categoriesRes] = await Promise.all([
+      const [transactionRes, accountsRes, categoriesRes, counterpartiesRes] = await Promise.all([
         supabase
           .from("transactions")
           .select(`
@@ -120,6 +128,7 @@ export default function TransactionDetailPage({
           .single(),
         supabase.from("accounts").select("*").eq("is_active", true).order("name"),
         supabase.from("categories").select("*").eq("is_active", true).order("name"),
+        supabase.from("counterparties").select("*").eq("is_active", true).order("name"),
       ]);
 
       if (transactionRes.error) {
@@ -140,6 +149,7 @@ export default function TransactionDetailPage({
 
       if (accountsRes.data) setAccounts(accountsRes.data);
       if (categoriesRes.data) setCategories(categoriesRes.data);
+      if (counterpartiesRes.data) setCounterparties(counterpartiesRes.data);
 
       setIsLoading(false);
     }
@@ -154,11 +164,19 @@ export default function TransactionDetailPage({
     setEditPaymentDate(transaction.payment_date);
     setEditAccountId(transaction.account_id);
     setEditLines([...transaction.transaction_lines]);
+    setPaidByOther(false);
+    setPaidByCounterpartyId(null);
+    setNewCounterpartyName("");
+    setShowNewCounterpartyInput(false);
     setIsEditing(true);
   };
 
   const handleCancelEdit = () => {
     setIsEditing(false);
+    setPaidByOther(false);
+    setPaidByCounterpartyId(null);
+    setNewCounterpartyName("");
+    setShowNewCounterpartyInput(false);
   };
 
   const handleUpdateLine = (index: number, updates: Partial<TransactionLine>) => {
@@ -196,11 +214,34 @@ export default function TransactionDetailPage({
     setIsSaving(true);
 
     try {
+      // 立替えてもらった場合: 新規相手先を作成
+      let counterpartyName: string | null = null;
+      if (paidByOther) {
+        if (showNewCounterpartyInput && newCounterpartyName.trim()) {
+          // Create new counterparty
+          const { data: newCp } = await supabase
+            .from("counterparties")
+            .insert({ name: newCounterpartyName.trim(), is_active: true })
+            .select()
+            .single();
+          if (newCp) {
+            counterpartyName = newCp.name;
+            setCounterparties([...counterparties, newCp]);
+          }
+        } else if (paidByCounterpartyId) {
+          const cp = counterparties.find((c) => c.id === paidByCounterpartyId);
+          counterpartyName = cp?.name || null;
+        }
+      }
+
       // Calculate new total
       const newTotal = editLines.reduce((sum, line) => sum + line.amount, 0);
 
       // Determine if settled
-      const isCashSettled = editPaymentDate !== null && editPaymentDate <= editDate;
+      // 立替えてもらった場合は決済済み（自分の口座からの支出なし）
+      const isCashSettled = paidByOther
+        ? true
+        : editPaymentDate !== null && editPaymentDate <= editDate;
 
       // Update transaction
       await supabase
@@ -208,7 +249,7 @@ export default function TransactionDetailPage({
         .update({
           description: editDescription,
           date: editDate,
-          payment_date: editPaymentDate,
+          payment_date: paidByOther ? editDate : editPaymentDate,
           account_id: editAccountId,
           total_amount: newTotal,
           is_cash_settled: isCashSettled,
@@ -234,6 +275,21 @@ export default function TransactionDetailPage({
         amortization_start: line.amortization_start,
         amortization_end: line.amortization_end,
       }));
+
+      // 立替えてもらった場合は借入（liability）ラインを追加
+      if (paidByOther && counterpartyName) {
+        lineInserts.push({
+          transaction_id: transaction.id,
+          amount: newTotal,
+          category_id: editLines[0]?.category_id || "",
+          line_type: "liability",
+          counterparty: counterpartyName,
+          is_settled: false,
+          amortization_months: null,
+          amortization_start: null,
+          amortization_end: null,
+        });
+      }
 
       await supabase.from("transaction_lines").insert(lineInserts);
 
@@ -269,6 +325,10 @@ export default function TransactionDetailPage({
       }
 
       setIsEditing(false);
+      setPaidByOther(false);
+      setPaidByCounterpartyId(null);
+      setNewCounterpartyName("");
+      setShowNewCounterpartyInput(false);
     } catch (error) {
       console.error("Save error:", error);
     } finally {
@@ -447,7 +507,24 @@ export default function TransactionDetailPage({
                 <label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Wallet className="w-3 h-3" /> {isIncome ? "入金先" : "支払い方法"}
                 </label>
-                <Select value={editAccountId} onValueChange={setEditAccountId}>
+                <Select
+                  value={paidByOther ? "__paid_by_other__" : editAccountId}
+                  onValueChange={(v) => {
+                    if (v === "__paid_by_other__") {
+                      setPaidByOther(true);
+                      // 最初の口座をダミーとして設定（スキーマ要件）
+                      if (accounts.length > 0) {
+                        setEditAccountId(accounts[0].id);
+                      }
+                    } else {
+                      setPaidByOther(false);
+                      setPaidByCounterpartyId(null);
+                      setNewCounterpartyName("");
+                      setShowNewCounterpartyInput(false);
+                      setEditAccountId(v);
+                    }
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -457,8 +534,79 @@ export default function TransactionDetailPage({
                         {account.name}
                       </SelectItem>
                     ))}
+                    {!isIncome && (
+                      <SelectItem value="__paid_by_other__">
+                        <span className="flex items-center gap-1">
+                          <UserPlus className="w-3 h-3" />
+                          立替えてもらった
+                        </span>
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
+
+                {/* 立替えてもらった場合の相手先選択 */}
+                {paidByOther && (
+                  <div className="mt-2 space-y-2">
+                    <label className="text-xs text-muted-foreground flex items-center gap-1">
+                      <UserPlus className="w-3 h-3" /> 立替えてくれた人
+                    </label>
+                    {showNewCounterpartyInput ? (
+                      <div className="flex gap-2">
+                        <Input
+                          type="text"
+                          placeholder="新しい相手先の名前"
+                          value={newCounterpartyName}
+                          onChange={(e) => setNewCounterpartyName(e.target.value)}
+                          autoFocus
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setShowNewCounterpartyInput(false);
+                            setNewCounterpartyName("");
+                          }}
+                        >
+                          戻る
+                        </Button>
+                      </div>
+                    ) : (
+                      <Select
+                        value={paidByCounterpartyId || ""}
+                        onValueChange={(v) => {
+                          if (v === "__new__") {
+                            setShowNewCounterpartyInput(true);
+                            setPaidByCounterpartyId(null);
+                          } else {
+                            setPaidByCounterpartyId(v);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="相手先を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {counterparties.map((cp) => (
+                            <SelectItem key={cp.id} value={cp.id}>
+                              {cp.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__new__">
+                            <span className="flex items-center gap-1 text-primary">
+                              <Plus className="w-3 h-3" />
+                              新しい相手先を追加
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                    <p className="text-xs text-blue-500">
+                      → この人への借入として精算画面に表示されます
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Lines */}
