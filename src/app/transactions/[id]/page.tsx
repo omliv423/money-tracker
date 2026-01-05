@@ -52,6 +52,7 @@ interface Transaction {
   total_amount: number;
   account_id: string;
   created_at: string;
+  paid_by_other: boolean;
   account: { id: string; name: string } | null;
   transaction_lines: TransactionLine[];
 }
@@ -111,6 +112,7 @@ export default function TransactionDetailPage({
             total_amount,
             account_id,
             created_at,
+            paid_by_other,
             account:accounts!transactions_account_id_fkey(id, name),
             transaction_lines(
               id,
@@ -164,8 +166,20 @@ export default function TransactionDetailPage({
     setEditPaymentDate(transaction.payment_date);
     setEditAccountId(transaction.account_id);
     setEditLines([...transaction.transaction_lines]);
-    setPaidByOther(false);
-    setPaidByCounterpartyId(null);
+    // 立替えてもらった状態を復元
+    setPaidByOther(transaction.paid_by_other || false);
+    // 立替えてもらった場合、liabilityラインから相手先を取得
+    if (transaction.paid_by_other) {
+      const liabilityLine = transaction.transaction_lines.find(
+        (l) => l.line_type === "liability" && l.counterparty
+      );
+      if (liabilityLine?.counterparty) {
+        const cp = counterparties.find((c) => c.name === liabilityLine.counterparty);
+        setPaidByCounterpartyId(cp?.id || null);
+      }
+    } else {
+      setPaidByCounterpartyId(null);
+    }
     setNewCounterpartyName("");
     setShowNewCounterpartyInput(false);
     setIsEditing(true);
@@ -254,6 +268,7 @@ export default function TransactionDetailPage({
           total_amount: newTotal,
           is_cash_settled: isCashSettled,
           settled_amount: isCashSettled ? newTotal : 0,
+          paid_by_other: paidByOther,
         })
         .eq("id", transaction.id);
 
@@ -304,6 +319,7 @@ export default function TransactionDetailPage({
           total_amount,
           account_id,
           created_at,
+          paid_by_other,
           account:accounts!transactions_account_id_fkey(id, name),
           transaction_lines(
             id,
@@ -830,7 +846,7 @@ export default function TransactionDetailPage({
                     <Wallet className="w-4 h-4 text-muted-foreground" />
                     <div>
                       <p className="text-muted-foreground text-xs">{isIncome ? "入金先" : "支払い方法"}</p>
-                      <p>{transaction.account?.name || "不明"}</p>
+                      <p>{transaction.paid_by_other ? "立替えてもらった" : (transaction.account?.name || "不明")}</p>
                     </div>
                   </div>
                 </div>

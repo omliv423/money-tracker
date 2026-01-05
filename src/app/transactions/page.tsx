@@ -41,6 +41,7 @@ interface Transaction {
   description: string;
   total_amount: number;
   account_id: string | null;
+  paid_by_other: boolean;
   account: { name: string } | null;
   transaction_lines: TransactionLine[];
 }
@@ -118,6 +119,7 @@ function TransactionsContent() {
         total_amount,
         account_id,
         user_id,
+        paid_by_other,
         account:accounts!transactions_account_id_fkey(name),
         transaction_lines(amount, line_type, category_id)
       `)
@@ -519,7 +521,7 @@ function TransactionsContent() {
                                         <div className="space-y-1">
                                           <p className="font-medium">{tx.description}</p>
                                           <p className="text-xs text-muted-foreground">
-                                            {tx.account?.name || "不明"}
+                                            {tx.paid_by_other ? "立替えてもらった" : (tx.account?.name || "不明")}
                                           </p>
                                         </div>
                                         <div className="flex items-center gap-2">

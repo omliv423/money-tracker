@@ -302,6 +302,7 @@ export function TransactionForm() {
           total_amount: totalAmount,
           is_cash_settled: isCashSettled,
           settled_amount: settledAmount,
+          paid_by_other: paidByOther,
         })
         .select()
         .single();
