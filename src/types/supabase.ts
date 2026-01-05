@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      analytics_events: {
+        Row: {
+          id: string
+          user_id: string | null
+          event_name: string
+          event_data: Json
+          page_path: string | null
+          session_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          event_name: string
+          event_data?: Json
+          page_path?: string | null
+          session_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          event_name?: string
+          event_data?: Json
+          page_path?: string | null
+          session_id?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       accounts: {
         Row: {
           created_at: string

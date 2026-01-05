@@ -275,20 +275,6 @@ function LoginPageContent() {
               </p>
             </div>
           </div>
-
-          {/* Contact */}
-          <div className="bg-secondary/50 rounded-xl p-4 text-center">
-            <p className="text-xs text-muted-foreground">
-              何かあれば
-              <a
-                href="mailto:moneytracker001@gmail.com"
-                className="text-primary hover:underline font-medium mx-1"
-              >
-                moneytracker001@gmail.com
-              </a>
-              まで
-            </p>
-          </div>
         </motion.section>
 
         {/* How to use link */}
