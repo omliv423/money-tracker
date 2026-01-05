@@ -135,20 +135,28 @@ export default function ExportPage() {
         }
       }
 
+      // Helper to escape CSV values and prevent formula injection
+      const escapeCSV = (value: string): string => {
+        let cell = String(value);
+
+        // Prevent CSV formula injection (values starting with =, +, -, @, tab, or carriage return)
+        if (/^[=+\-@\t\r]/.test(cell)) {
+          cell = "'" + cell;
+        }
+
+        // Escape quotes
+        const escaped = cell.replace(/"/g, '""');
+
+        // Wrap in quotes if contains comma, newline, or quotes
+        if (escaped.includes(",") || escaped.includes("\n") || escaped.includes('"') || escaped !== cell) {
+          return `"${escaped}"`;
+        }
+        return escaped;
+      };
+
       // Convert to CSV
       const csvContent = rows
-        .map((row) =>
-          row
-            .map((cell) => {
-              // Escape quotes and wrap in quotes if contains comma or newline
-              const escaped = String(cell).replace(/"/g, '""');
-              if (escaped.includes(",") || escaped.includes("\n") || escaped.includes('"')) {
-                return `"${escaped}"`;
-              }
-              return escaped;
-            })
-            .join(",")
-        )
+        .map((row) => row.map(escapeCSV).join(","))
         .join("\n");
 
       // Add BOM for Excel compatibility with Japanese

@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, PREMIUM_PRICE_ID } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting for checkout
+    const clientIP = getClientIP(request);
+    const rateLimit = checkRateLimit(`checkout:${clientIP}`, { limit: 10, windowSec: 60 });
+
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: "リクエストが多すぎます。しばらくしてから再試行してください。" },
+        { status: 429 }
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },

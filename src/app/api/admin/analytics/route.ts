@@ -1,12 +1,34 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient, createUntypedAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
-// Admin emails that can access analytics
-const ADMIN_EMAILS = ["moneytracker001@gmail.com"];
+// Admin emails that can access analytics (comma-separated in env)
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim()).filter(Boolean);
 
-export async function GET() {
+// Mask email for privacy (show first 2 chars + domain)
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  const maskedLocal = local.length > 2
+    ? local.substring(0, 2) + "***"
+    : "***";
+  return `${maskedLocal}@${domain}`;
+}
+
+export async function GET(request: NextRequest) {
   try {
+    // Rate limiting for admin endpoint
+    const clientIP = getClientIP(request);
+    const rateLimit = checkRateLimit(`admin:${clientIP}`, RATE_LIMITS.admin);
+
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: "リクエストが多すぎます" },
+        { status: 429 }
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -108,7 +130,7 @@ export async function GET() {
         .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
         .slice(0, 10)
         .map((u) => ({
-          email: u.email,
+          email: maskEmail(u.email || ""),
           createdAt: u.created_at,
         })),
     };

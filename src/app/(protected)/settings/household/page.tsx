@@ -68,8 +68,8 @@ interface PendingInvitation {
 }
 
 function generateInviteToken() {
-  return Math.random().toString(36).substring(2, 15) +
-         Math.random().toString(36).substring(2, 15);
+  // Use cryptographically secure random token
+  return crypto.randomUUID();
 }
 
 export default function HouseholdSettingsPage() {

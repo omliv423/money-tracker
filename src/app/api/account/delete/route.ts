@@ -1,9 +1,27 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    // Rate limiting - strict for account deletion
+    const clientIP = getClientIP(request);
+    const rateLimit = checkRateLimit(`delete:${clientIP}`, { limit: 3, windowSec: 3600 }); // 3 per hour
+
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: "リクエストが多すぎます。しばらくしてから再試行してください。" },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Remaining": String(rateLimit.remaining),
+            "X-RateLimit-Reset": String(rateLimit.reset),
+          },
+        }
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },

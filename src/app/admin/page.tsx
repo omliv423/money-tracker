@@ -43,7 +43,8 @@ interface AnalyticsData {
   dailyActiveUsers: { date: string; count: number }[];
 }
 
-const ADMIN_EMAILS = ["moneytracker001@gmail.com"];
+// Note: Client-side check only for UX - real security is in API route
+const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "").split(",").map(e => e.trim()).filter(Boolean);
 
 export default function AdminDashboard() {
   const router = useRouter();
