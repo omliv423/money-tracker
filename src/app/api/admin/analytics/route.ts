@@ -19,16 +19,17 @@ export async function GET() {
     const adminClient = createAdminClient();
     const untypedClient = createUntypedAdminClient();
 
+    // Fetch users using auth admin API
+    const { data: authUsers } = await untypedClient.auth.admin.listUsers({ perPage: 100 });
+    const users = authUsers?.users || [];
+
     // Fetch analytics data in parallel
     const [
-      usersResult,
       subscriptionsResult,
       transactionsResult,
       recentEventsResult,
       dailyActiveResult,
     ] = await Promise.all([
-      // Total users and recent signups (using untyped client for auth schema)
-      untypedClient.from("auth.users").select("id, email, created_at").order("created_at", { ascending: false }).limit(100),
 
       // Subscription breakdown
       adminClient
@@ -95,19 +96,21 @@ export async function GET() {
     ]);
 
     // Calculate user stats
-    const users = usersResult.data || [];
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const userStats = {
       total: users.length,
-      last7Days: users.filter((u) => new Date(u.created_at) > sevenDaysAgo).length,
-      last30Days: users.filter((u) => new Date(u.created_at) > thirtyDaysAgo).length,
-      recentSignups: users.slice(0, 10).map((u) => ({
-        email: u.email,
-        createdAt: u.created_at,
-      })),
+      last7Days: users.filter((u) => new Date(u.created_at || 0) > sevenDaysAgo).length,
+      last30Days: users.filter((u) => new Date(u.created_at || 0) > thirtyDaysAgo).length,
+      recentSignups: users
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 10)
+        .map((u) => ({
+          email: u.email,
+          createdAt: u.created_at,
+        })),
     };
 
     return NextResponse.json({
