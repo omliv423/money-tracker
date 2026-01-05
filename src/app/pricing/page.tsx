@@ -1,16 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { ArrowLeft, Check, Crown } from "lucide-react";
-import { PLANS } from "@/lib/stripe";
+import {
+  ArrowLeft,
+  Check,
+  Crown,
+  ChevronDown,
+  Wallet,
+  Users,
+  CalendarClock,
+  Zap,
+  PieChart,
+  Infinity,
+} from "lucide-react";
 
 export default function PricingPage() {
   return (
     <div className="min-h-screen flex flex-col safe-area-top">
       {/* Header */}
-      <header className="border-b border-border/50 px-6 py-4">
-        <div className="max-w-lg mx-auto flex items-center gap-4">
+      <header className="border-b border-border/50 px-6 py-4 sticky top-0 bg-background/95 backdrop-blur-sm z-10">
+        <div className="max-w-2xl mx-auto flex items-center gap-4">
           <Link
             href="/login"
             className="p-2 -ml-2 hover:bg-secondary rounded-lg transition-colors"
@@ -22,118 +33,210 @@ export default function PricingPage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 px-6 py-8 max-w-lg mx-auto w-full">
+      <main className="flex-1 px-6 py-10 max-w-2xl mx-auto w-full">
+        {/* Hero */}
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-10"
+        >
+          <div className="inline-flex items-center gap-2 mb-4">
+            <Crown className="w-6 h-6 text-yellow-500" />
+            <h2 className="font-heading text-2xl font-bold">プレミアムプラン</h2>
+          </div>
+          <p className="text-3xl font-bold mb-2">
+            ¥400<span className="text-base font-normal text-muted-foreground">/月</span>
+          </p>
+          <p className="text-muted-foreground text-sm">
+            プレミアムになると次の特典を利用できるようになります。
+          </p>
+        </motion.section>
+
+        {/* Features */}
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="space-y-1 mb-10"
+        >
+          <FeatureItem
+            icon={Infinity}
+            title="口座を無制限に登録可能に"
+            note="無料プランは3口座まで"
+          />
+          <FeatureItem
+            icon={PieChart}
+            title="すべてのレポートにアクセス"
+            note="PL・BS・CF・年間計画など"
+          />
+          <FeatureItem
+            icon={Users}
+            title="パートナーとの共有機能"
+            note="招待リンクで家計を共有"
+          />
+          <FeatureItem
+            icon={CalendarClock}
+            title="定期取引の登録"
+            note="毎月の固定費をワンタップで記録"
+          />
+          <FeatureItem
+            icon={Zap}
+            title="クイック入力の登録"
+            note="よく使う取引をテンプレート化"
+          />
+          <FeatureItem
+            icon={Wallet}
+            title="按分機能"
+            note="1つの支出を複数カテゴリに分割"
+          />
+        </motion.section>
+
+        {/* Free Plan Comparison */}
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-secondary/30 rounded-xl p-5 mb-10"
+        >
+          <h3 className="font-bold mb-3">無料プランでできること</h3>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary" />
+              口座3つまで登録
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary" />
+              取引の記録・編集
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary" />
+              基本的なレポート表示
+            </li>
+          </ul>
+          <p className="text-xs text-muted-foreground mt-3">
+            まずは無料で始めて、必要に応じてアップグレードできます。
+          </p>
+        </motion.section>
+
+        {/* CTA */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
+          transition={{ delay: 0.2 }}
+          className="text-center mb-10"
         >
-          <h2 className="font-heading text-2xl font-bold mb-2">
-            シンプルな料金体系
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            まずは無料で始めて、必要に応じてアップグレード
+          <p className="text-sm text-muted-foreground mb-4">
+            プレミアムプランに登録するにはログインが必要です
           </p>
+          <Link
+            href="/login"
+            className="inline-flex items-center justify-center h-12 px-8 bg-primary text-primary-foreground rounded-xl font-medium shadow-soft hover:opacity-90 transition-opacity"
+          >
+            ログインして始める
+          </Link>
         </motion.div>
 
-        {/* Plans */}
-        <div className="space-y-4">
-          {/* Free Plan */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-card rounded-xl p-5 border-2 border-border"
-          >
-            <div className="mb-4">
-              <h3 className="font-bold text-lg">{PLANS.free.name}</h3>
-              <p className="text-3xl font-bold mt-2">
-                ¥0
-                <span className="text-sm font-normal text-muted-foreground">
-                  /月
-                </span>
-              </p>
-            </div>
-            <ul className="space-y-3 mb-5">
-              {PLANS.free.features.map((feature, i) => (
-                <li
-                  key={i}
-                  className="flex items-center gap-3 text-sm text-muted-foreground"
-                >
-                  <Check className="w-4 h-4 text-primary flex-shrink-0" />
-                  {feature}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/login"
-              className="block w-full text-center py-3 border border-border rounded-xl font-medium text-sm hover:bg-secondary transition-colors"
-            >
-              無料で始める
-            </Link>
-          </motion.div>
+        {/* FAQ */}
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="mb-10"
+        >
+          <h3 className="font-heading text-lg font-bold mb-4">購入に関するFAQ</h3>
+          <div className="space-y-2">
+            <FAQItem
+              question="無料プランとプレミアムの違いは？"
+              answer="無料プランは口座3つまで、基本機能のみ利用可能です。プレミアムでは口座無制限、すべてのレポート、パートナー共有、定期取引、クイック入力などすべての機能が使えます。"
+            />
+            <FAQItem
+              question="いつでもキャンセルできる？"
+              answer="はい、いつでもキャンセル可能です。キャンセル後も、支払い済みの期間が終了するまでプレミアム機能を利用できます。"
+            />
+            <FAQItem
+              question="支払いは自動更新される？"
+              answer="はい、毎月自動更新されます。キャンセルしない限り、翌月も自動的に課金されます。"
+            />
+            <FAQItem
+              question="決済の安全性について"
+              answer="決済はStripeを通じて行われます。クレジットカード情報は当サービスのサーバーには保存されず、Stripeのセキュアなシステムで処理されます。"
+            />
+            <FAQItem
+              question="Stripeとは？"
+              answer="Stripeは世界中で利用されている決済プラットフォームです。Amazon、Google、Shopifyなど多くの企業が採用しており、高いセキュリティ基準を満たしています。"
+            />
+          </div>
+        </motion.section>
 
-          {/* Premium Plan */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-card rounded-xl p-5 border-2 border-primary relative overflow-hidden"
-          >
-            {/* Badge */}
-            <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-medium px-3 py-1 rounded-bl-xl">
-              おすすめ
-            </div>
-
-            <div className="mb-4">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-lg">{PLANS.premium.name}</h3>
-                <Crown className="w-5 h-5 text-yellow-500" />
-              </div>
-              <p className="text-3xl font-bold mt-2">
-                ¥{PLANS.premium.price}
-                <span className="text-sm font-normal text-muted-foreground">
-                  /月
-                </span>
-              </p>
-            </div>
-            <ul className="space-y-3 mb-5">
-              {PLANS.premium.features.map((feature, i) => (
-                <li key={i} className="flex items-center gap-3 text-sm">
-                  <Check className="w-4 h-4 text-primary flex-shrink-0" />
-                  {feature}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/login"
-              className="block w-full text-center py-3 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:opacity-90 transition-opacity"
-            >
-              プレミアムで始める
-            </Link>
-          </motion.div>
-        </div>
-
-        {/* Notes */}
+        {/* Legal Link */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="mt-8 space-y-4"
+          className="text-center"
         >
-          <div className="bg-secondary/50 rounded-xl p-4">
-            <h4 className="font-medium text-sm mb-2">お支払いについて</h4>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li>• クレジットカード決済（Stripe）</li>
-              <li>• いつでもキャンセル可能</li>
-              <li>• 解約後も期間終了まで利用可能</li>
-            </ul>
-          </div>
+          <Link
+            href="/terms"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors underline"
+          >
+            利用規約
+          </Link>
         </motion.div>
       </main>
 
       {/* Footer */}
       <Footer />
+    </div>
+  );
+}
+
+function FeatureItem({
+  icon: Icon,
+  title,
+  note,
+}: {
+  icon: React.ElementType;
+  title: string;
+  note?: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
+      <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center mt-0.5">
+        <Icon className="w-4 h-4 text-primary" />
+      </div>
+      <div className="flex-1">
+        <p className="font-medium text-sm">{title}</p>
+        {note && (
+          <p className="text-xs text-muted-foreground mt-0.5">{note}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FAQItem({ question, answer }: { question: string; answer: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="border border-border/50 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-secondary/50 transition-colors"
+      >
+        <span className="font-medium text-sm">{question}</span>
+        <ChevronDown
+          className={`w-4 h-4 text-muted-foreground transition-transform ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {isOpen && (
+        <div className="px-4 pb-4">
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {answer}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
