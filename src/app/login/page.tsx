@@ -6,10 +6,12 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, Users, Shield } from "lucide-react";
 import Link from "next/link";
+import { AboutModal, AboutTrigger } from "@/components/about/AboutModal";
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -156,19 +158,25 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <motion.p
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="mt-10 text-center text-xs text-muted-foreground/70"
+          className="mt-10 text-center space-y-3"
         >
-          ログインすることで、
-          <Link href="/terms" className="underline hover:text-foreground transition-colors">
-            利用規約
-          </Link>
-          に同意したものとみなされます
-        </motion.p>
+          <p className="text-xs text-muted-foreground/70">
+            ログインすることで、
+            <Link href="/terms" className="underline hover:text-foreground transition-colors">
+              利用規約
+            </Link>
+            に同意したものとみなされます
+          </p>
+          <AboutTrigger onClick={() => setIsAboutOpen(true)} />
+        </motion.div>
       </div>
+
+      {/* About Modal */}
+      <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
     </div>
   );
 }
