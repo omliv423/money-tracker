@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,23 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+
+  // 初回訪問時は自動でAboutモーダルを表示
+  useEffect(() => {
+    const hasSeenAbout = localStorage.getItem("hasSeenAbout");
+    if (!hasSeenAbout) {
+      // 少し遅延させてアニメーションを自然に
+      const timer = setTimeout(() => {
+        setIsAboutOpen(true);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleAboutClose = () => {
+    setIsAboutOpen(false);
+    localStorage.setItem("hasSeenAbout", "true");
+  };
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -176,7 +193,7 @@ export default function LoginPage() {
       </div>
 
       {/* About Modal */}
-      <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
+      <AboutModal isOpen={isAboutOpen} onClose={handleAboutClose} />
     </div>
   );
 }
