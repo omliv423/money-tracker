@@ -54,7 +54,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 <SketchIllustration />
               </motion.div>
 
-              {/* Story Section 1 */}
+              {/* Story Section 1 - きっかけ */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -68,13 +68,10 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                   8月に沖縄旅行に行くとします。2月に飛行機を予約して、カードで支払いました。
                 </p>
                 <p className="text-muted-foreground leading-relaxed">
-                  普通の家計簿だと、これは「2月の交通費」として記録されます。
-                  でも実際に旅行するのは8月。沖縄で使ったお金も「8月の娯楽費」になります。
+                  普通の家計簿だと、これは「2月の交通費」として記録されます。でも実際に旅行するのは8月。沖縄で使ったお金も「8月の娯楽費」になります。
                 </p>
-                <p className="text-foreground leading-relaxed">
-                  同じ旅行なのに、費用の計上タイミングがバラバラ。
-                  <br />
-                  <span className="text-primary font-medium">これがずっとモヤモヤしていました。</span>
+                <p className="text-muted-foreground leading-relaxed">
+                  同じ旅行なのに、費用の計上タイミングがバラバラで、ずっとモヤモヤしていました。
                 </p>
               </motion.div>
 
@@ -92,7 +89,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
               </motion.div>
 
-              {/* Story Section 2 */}
+              {/* Story Section 2 - 試行錯誤 */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -100,19 +97,15 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 className="space-y-4"
               >
                 <p className="text-muted-foreground leading-relaxed">
-                  しばらくはスプレッドシートで管理していました。
-                  カードの明細をエクスポートして、発生日を手で直すんです。
+                  なんとかできないか考えて、しばらくはスプレッドシートにカードの明細をエクスポートして、発生日を編集することで実現していましたが、毎日エクスポートするのは大変だし、月1回でも忘れてしまって、結局続けられませんでした...
                 </p>
-                <div className="bg-secondary/50 rounded-2xl p-4 border border-border/50">
-                  <p className="text-sm text-muted-foreground">
-                    でも、毎日エクスポートするのは大変だし、
-                    <br />
-                    月1回だと続かなくなってしまって...
-                  </p>
-                </div>
                 <p className="text-muted-foreground leading-relaxed">
-                  「費用の発生」と「お金の動き」を分けて記録できるアプリがあれば、
-                  毎日サッと記録できるのになぁ、と思っていました。
+                  「費用の発生」と「お金の動き」を分けて、毎日記録ができるアプリがあったらいいなと思い、作ってみることにしました。
+                </p>
+                <p className="text-foreground leading-relaxed">
+                  収益/費用の発生タイミングと入出金タイミングを分けることができ、それを
+                  <span className="text-primary font-medium">PL、BS、CF</span>
+                  で確認できるアプリです。
                 </p>
               </motion.div>
 
@@ -130,7 +123,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
               </motion.div>
 
-              {/* Story Section 3 - Solution */}
+              {/* Story Section 3 - できないこと */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -138,32 +131,34 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 className="space-y-4"
               >
                 <h3 className="font-heading text-xl font-bold">
-                  なので、作ってみました
+                  できないこと
                 </h3>
                 <p className="text-muted-foreground leading-relaxed">
-                  「発生日」と「支払日」を分けて記録できる家計簿アプリです。
-                  会社の会計と同じように、自分の財布も発生ベースで管理できます。
+                  よくある家計簿アプリにある「口座の自動連携」には対応していません。法人化して許諾を取ればできるらしいのですが、今のところはやる予定はありません。
+                </p>
+                <p className="text-muted-foreground leading-relaxed">
+                  むしろ、自分が使ったお金を丁寧に手入力して、
+                  <span className="text-foreground font-medium">「家計の財務」を自分で管理したい</span>
+                  という方に使っていただけたら嬉しいです。
                 </p>
               </motion.div>
 
-              {/* Note about no auto-sync */}
+              {/* Contact */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.7 }}
-                className="bg-gradient-to-br from-primary/5 to-accent/5 rounded-2xl p-5 border border-primary/10 space-y-3"
+                className="bg-gradient-to-br from-primary/5 to-accent/5 rounded-2xl p-5 border border-primary/10"
               >
-                <p className="text-sm leading-relaxed">
-                  <span className="font-medium">ひとつだけ、できないことがあります。</span>
-                </p>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  よくある家計簿アプリにある「口座の自動連携」には対応していません。
-                  法人化して許諾を取ればできるらしいのですが、今のところはやる予定がなくて。
-                </p>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  むしろ、自分が使ったお金を丁寧に手入力して、
-                  <span className="text-foreground">「家計の財務」を自分で管理したい</span>
-                  という方に使っていただけたら嬉しいです。
+                  何かあれば
+                  <a
+                    href="mailto:moneytracker001@gmail.com"
+                    className="text-primary hover:underline font-medium mx-1"
+                  >
+                    moneytracker001@gmail.com
+                  </a>
+                  までご連絡ください！
                 </p>
               </motion.div>
 
