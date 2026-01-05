@@ -21,7 +21,7 @@ const accountTypes = [
   { value: "bank", label: "銀行口座", icon: Wallet },
   { value: "card", label: "クレジットカード", icon: CreditCard },
   { value: "cash", label: "現金", icon: Banknote },
-  { value: "ewallet", label: "電子マネー", icon: Smartphone },
+  { value: "points", label: "ポイント・電子マネー", icon: Smartphone },
 ];
 
 interface AccountDraft {
@@ -72,12 +72,17 @@ export default function OnboardingAccountsPage() {
     setError(null);
 
     try {
+      if (!user?.id) {
+        throw new Error("ユーザーが見つかりません");
+      }
+
       const { error: insertError } = await supabase.from("accounts").insert(
         validAccounts.map((a) => ({
-          user_id: user?.id,
+          user_id: user.id,
           name: a.name.trim(),
           type: a.type,
           owner: "self",
+          initial_balance: 0,
           opening_balance: 0,
           current_balance: 0,
           is_active: true,
@@ -91,7 +96,8 @@ export default function OnboardingAccountsPage() {
       router.push("/onboarding/categories");
     } catch (err) {
       console.error("Error saving accounts:", err);
-      setError("口座の保存に失敗しました。もう一度お試しください。");
+      const message = err instanceof Error ? err.message : "不明なエラー";
+      setError(`口座の保存に失敗しました: ${message}`);
     } finally {
       setIsSaving(false);
     }

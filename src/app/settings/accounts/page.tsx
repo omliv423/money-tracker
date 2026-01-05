@@ -51,8 +51,7 @@ const accountTypes = [
   { value: "bank", label: "銀行口座" },
   { value: "card", label: "クレジットカード" },
   { value: "cash", label: "現金" },
-  { value: "ewallet", label: "電子マネー" },
-  { value: "points", label: "ポイント" },
+  { value: "points", label: "ポイント・電子マネー" },
 ];
 
 const ownerTypes = [
