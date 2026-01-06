@@ -137,19 +137,21 @@ export default function CashSettlementsPage() {
         const accountName = tx.account.name;
 
         // 金額ベースで未払金か未収金かを判定
-        let totalInflow = 0;  // 収入・負債（入金されるもの）
-        let totalOutflow = 0; // 支出・資産（出金するもの）
+        // 未収金: 収入（売上等）、資産（立替金＝相手が返す）
+        // 未払金: 支出（費用）、負債（借入＝自分が返す）
+        let totalReceivable = 0;  // 入金予定（収入・立替金）
+        let totalPayable = 0;     // 出金予定（支出・借入）
 
         (tx.transaction_lines || []).forEach((line: any) => {
-          if (line.line_type === "income" || line.line_type === "liability") {
-            totalInflow += line.amount || 0;
-          } else if (line.line_type === "expense" || line.line_type === "asset") {
-            totalOutflow += line.amount || 0;
+          if (line.line_type === "income" || line.line_type === "asset") {
+            totalReceivable += line.amount || 0;
+          } else if (line.line_type === "expense" || line.line_type === "liability") {
+            totalPayable += line.amount || 0;
           }
         });
 
-        // 入金 > 出金 なら未収金、それ以外は未払金
-        let txType: "payable" | "receivable" = totalInflow > totalOutflow ? "receivable" : "payable";
+        // 入金予定 > 出金予定 なら未収金、それ以外は未払金
+        let txType: "payable" | "receivable" = totalReceivable > totalPayable ? "receivable" : "payable";
 
         const mapKey = `${txType}-${accountId}`;
         const targetMap = txType === "payable" ? payableMap : receivableMap;
@@ -193,19 +195,21 @@ export default function CashSettlementsPage() {
       const accountName = tx.account.name;
 
       // 金額ベースで未払金か未収金かを判定
-      let totalInflow = 0;  // 収入・負債（入金されるもの）
-      let totalOutflow = 0; // 支出・資産（出金するもの）
+      // 未収金: 収入（売上等）、資産（立替金＝相手が返す）
+      // 未払金: 支出（費用）、負債（借入＝自分が返す）
+      let totalReceivable = 0;  // 入金予定（収入・立替金）
+      let totalPayable = 0;     // 出金予定（支出・借入）
 
       (tx.transaction_lines || []).forEach((line: any) => {
-        if (line.line_type === "income" || line.line_type === "liability") {
-          totalInflow += line.amount || 0;
-        } else if (line.line_type === "expense" || line.line_type === "asset") {
-          totalOutflow += line.amount || 0;
+        if (line.line_type === "income" || line.line_type === "asset") {
+          totalReceivable += line.amount || 0;
+        } else if (line.line_type === "expense" || line.line_type === "liability") {
+          totalPayable += line.amount || 0;
         }
       });
 
-      // 入金 > 出金 なら未収金、それ以外は未払金
-      let txType: "payable" | "receivable" = totalInflow > totalOutflow ? "receivable" : "payable";
+      // 入金予定 > 出金予定 なら未収金、それ以外は未払金
+      let txType: "payable" | "receivable" = totalReceivable > totalPayable ? "receivable" : "payable";
 
       const mapKey = `${txType}-${accountId}`;
       const targetMap = txType === "payable" ? payableMap : receivableMap;
