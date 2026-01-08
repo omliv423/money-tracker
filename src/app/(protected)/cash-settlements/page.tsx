@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { CreditCard, Check, ChevronDown, ChevronRight, Calendar, Wallet, ArrowDownLeft, ArrowUpRight, Undo2 } from "lucide-react";
+import { CreditCard, Check, ChevronDown, ChevronRight, Calendar, Wallet, ArrowDownLeft, ArrowUpRight, Undo2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -454,6 +454,18 @@ export default function CashSettlementsPage() {
     .filter((g) => g.type === "receivable")
     .reduce((sum, g) => sum + g.totalAmount, 0);
 
+  // 期限超過の取引数をカウント
+  const today = new Date().toISOString().split("T")[0];
+  const overdueCount = accountGroups
+    .flatMap((g) => g.transactions)
+    .filter((tx) => tx.payment_date && tx.payment_date < today)
+    .length;
+
+  // 取引が期限超過かどうかを判定するヘルパー関数
+  const isOverdue = (tx: Transaction) => {
+    return tx.payment_date && tx.payment_date < today;
+  };
+
   if (isLoading) {
     return (
       <MainLayout>
@@ -491,9 +503,14 @@ export default function CashSettlementsPage() {
                   statusTab === "unsettled"
                     ? "bg-background shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
-                }`}
+                } flex items-center justify-center gap-2`}
               >
                 未消し込み
+                {overdueCount > 0 && (
+                  <span className="flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                    {overdueCount > 9 ? "9+" : overdueCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => {
@@ -658,10 +675,15 @@ export default function CashSettlementsPage() {
 
                                 {group.transactions.map((tx) => {
                                   const remainingAmount = tx.total_amount - tx.settled_amount;
+                                  const txOverdue = statusTab === "unsettled" && isOverdue(tx);
                                   return (
                                     <div
                                       key={tx.id}
-                                      className="p-3 bg-card rounded-lg border border-border"
+                                      className={`p-3 bg-card rounded-lg border ${
+                                        txOverdue
+                                          ? "border-amber-500/50 bg-amber-500/5"
+                                          : "border-border"
+                                      }`}
                                     >
                                       <div className="flex items-center gap-3">
                                         <Checkbox
@@ -669,7 +691,12 @@ export default function CashSettlementsPage() {
                                           onCheckedChange={() => toggleTransactionSelection(tx.id)}
                                         />
                                         <div className="flex-1">
-                                          <p className="font-medium text-sm">{tx.description}</p>
+                                          <div className="flex items-center gap-2">
+                                            <p className="font-medium text-sm">{tx.description}</p>
+                                            {txOverdue && (
+                                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                            )}
+                                          </div>
                                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                             <Calendar className="w-3 h-3" />
                                             <span>
@@ -678,7 +705,7 @@ export default function CashSettlementsPage() {
                                             {tx.payment_date && tx.payment_date !== tx.date && (
                                               <>
                                                 <span>→</span>
-                                                <span>
+                                                <span className={txOverdue ? "text-amber-600 font-medium" : ""}>
                                                   {format(new Date(tx.payment_date), "M/d", { locale: ja })}
                                                 </span>
                                               </>

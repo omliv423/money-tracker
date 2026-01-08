@@ -253,9 +253,11 @@ export default function TransactionDetailPage({
 
       // Determine if settled
       // 立替えてもらった場合は決済済み（自分の口座からの支出なし）
+      // 支払日が発生日以前 かつ 支払日が今日以前なら決済済み（実際に支払いが発生している）
+      const today = new Date().toISOString().split("T")[0];
       const isCashSettled = paidByOther
         ? true
-        : editPaymentDate !== null && editPaymentDate <= editDate;
+        : editPaymentDate !== null && editPaymentDate !== "" && editPaymentDate <= editDate && editPaymentDate <= today;
 
       // Update transaction
       await supabase

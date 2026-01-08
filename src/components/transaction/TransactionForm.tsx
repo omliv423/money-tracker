@@ -283,9 +283,11 @@ export function TransactionForm() {
     try {
       // 立替えてもらった場合は、自分の口座からの支出ではないので決済済み扱い
       // 代わりに借入（liability）として精算画面に表示される
+      // 支払日が発生日以前 かつ 支払日が今日以前なら決済済み（実際に支払いが発生している）
+      const today = new Date().toISOString().split("T")[0];
       const isCashSettled = paidByOther
         ? true // 立替えてもらった場合は決済済み（口座からの支出なし）
-        : paymentDate !== null && paymentDate <= accrualDate;
+        : paymentDate !== null && paymentDate !== "" && paymentDate <= accrualDate && paymentDate <= today;
       const settledAmount = isCashSettled ? totalAmount : 0;
 
       // 立替えてもらった場合は最初の口座を使用（スキーマ要件）

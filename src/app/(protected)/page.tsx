@@ -6,6 +6,7 @@ import { TransactionForm } from "@/components/transaction/TransactionForm";
 import { RecurringTransactionsCard } from "@/components/recurring/RecurringTransactionsCard";
 import { QuickEntryButtons } from "@/components/quick-entry/QuickEntryButtons";
 import { TourGuide } from "@/components/tour/TourGuide";
+import { OverdueSettlementsBanner } from "@/components/alerts/OverdueSettlementsBanner";
 import { useTour } from "@/hooks/useTour";
 import { ArrowLeftRight } from "lucide-react";
 
@@ -15,7 +16,10 @@ export default function Home() {
   return (
     <MainLayout>
       {showTour && <TourGuide onComplete={completeTour} />}
-      <div className="space-y-4 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0">
+      <div className="space-y-4">
+        <OverdueSettlementsBanner />
+      </div>
+      <div className="space-y-4 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0 mt-4">
         <div className="space-y-4">
           {/* Quick Actions */}
           <div className="flex justify-end lg:justify-start">
