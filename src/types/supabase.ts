@@ -410,6 +410,75 @@ export type Database = {
         }
         Relationships: []
       }
+      settlement_balances: {
+        Row: {
+          id: string
+          user_id: string | null
+          counterparty: string
+          receive_balance: number
+          pay_balance: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          counterparty: string
+          receive_balance?: number
+          pay_balance?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          counterparty?: string
+          receive_balance?: number
+          pay_balance?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      settlement_items: {
+        Row: {
+          id: string
+          settlement_id: string
+          transaction_line_id: string
+          amount: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          settlement_id: string
+          transaction_line_id: string
+          amount: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          settlement_id?: string
+          transaction_line_id?: string
+          amount?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlement_items_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: false
+            referencedRelation: "settlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_items_transaction_line_id_fkey"
+            columns: ["transaction_line_id"]
+            isOneToOne: false
+            referencedRelation: "transaction_lines"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       households: {
         Row: {
           id: string
