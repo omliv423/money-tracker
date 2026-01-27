@@ -33,10 +33,10 @@ export function AmountInput({ value, onChange, className }: AmountInputProps) {
   ];
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn("space-y-3", className)}>
       {/* Display */}
-      <div className="text-center py-6">
-        <div className="text-muted-foreground text-sm mb-1">金額</div>
+      <div className="text-center py-4">
+        <div className="text-muted-foreground text-xs mb-1">金額</div>
         <motion.div
           key={value}
           initial={{ scale: 1.05, opacity: 0.8 }}
@@ -49,14 +49,14 @@ export function AmountInput({ value, onChange, className }: AmountInputProps) {
       </div>
 
       {/* Keypad */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-1.5">
         {keys.flat().map((key) => (
           <motion.button
             key={key}
             whileTap={{ scale: 0.95 }}
             onClick={() => handleKeyDown(key)}
             className={cn(
-              "h-14 rounded-xl font-medium text-xl transition-colors",
+              "h-12 rounded-xl font-medium text-lg transition-colors",
               key === "clear" || key === "backspace"
                 ? "bg-secondary text-secondary-foreground"
                 : "bg-card text-card-foreground hover:bg-accent"

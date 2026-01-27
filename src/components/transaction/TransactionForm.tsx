@@ -557,22 +557,22 @@ export function TransactionForm() {
 
       {/* Header */}
       <div className="text-center">
-        <h1 className="font-heading text-2xl font-bold">
+        <h1 className="font-heading text-xl font-bold">
           {step === "amount" ? "取引を登録" : "詳細を入力"}
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="text-muted-foreground text-xs mt-0.5">
           {format(new Date(accrualDate), "yyyy年M月d日(E)", { locale: ja })}
         </p>
       </div>
 
       {step === "amount" ? (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <AmountInput value={totalAmount} onChange={setTotalAmount} />
 
           <Button
             onClick={handleNext}
             disabled={totalAmount === 0}
-            className="w-full h-14 text-lg font-medium"
+            className="w-full h-12 text-base font-medium"
             size="lg"
           >
             次へ
@@ -593,7 +593,7 @@ export function TransactionForm() {
             </div>
 
             {/* Dates */}
-            <div className="bg-card rounded-xl p-4 border border-border space-y-3">
+            <div className="bg-card rounded-xl p-4 border border-border space-y-3 overflow-hidden">
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Calendar className="w-3 h-3" /> 発生日
@@ -609,33 +609,29 @@ export function TransactionForm() {
                   <label className="text-xs text-muted-foreground flex items-center gap-1">
                     <CreditCard className="w-3 h-3" /> {isIncomeTransaction ? "入金日" : "支払日"}
                   </label>
-                  <div className="flex items-center gap-2">
-                    {paymentDate === null ? (
-                      <div className="flex-1 text-sm text-muted-foreground py-2">未定</div>
-                    ) : (
-                      <div className="flex-1">
-                        <DatePicker
-                          value={paymentDate ? parseISO(paymentDate) : undefined}
-                          onChange={(date) => setPaymentDate(date ? format(date, "yyyy-MM-dd") : null)}
-                        />
-                      </div>
-                    )}
-                    <label className="flex items-center gap-1 text-xs cursor-pointer shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={paymentDate === null}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setPaymentDate(null);
-                          } else {
-                            setPaymentDate(format(new Date(), "yyyy-MM-dd"));
-                          }
-                        }}
-                        className="w-4 h-4 rounded border-border"
-                      />
-                      未定
-                    </label>
-                  </div>
+                  {paymentDate === null ? (
+                    <div className="text-sm text-muted-foreground py-2">未定</div>
+                  ) : (
+                    <DatePicker
+                      value={paymentDate ? parseISO(paymentDate) : undefined}
+                      onChange={(date) => setPaymentDate(date ? format(date, "yyyy-MM-dd") : null)}
+                    />
+                  )}
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={paymentDate === null}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setPaymentDate(null);
+                        } else {
+                          setPaymentDate(format(new Date(), "yyyy-MM-dd"));
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-border"
+                    />
+                    未定
+                  </label>
                 </div>
               )}
               {/* 決済状態プレビュー */}

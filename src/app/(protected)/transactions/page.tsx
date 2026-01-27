@@ -268,22 +268,48 @@ function TransactionsContent() {
     <MainLayout>
       {(() => {
         const filterPanel = (
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <div className="p-4 space-y-4">
+          <div className="bg-card rounded-xl border border-border overflow-hidden max-w-full">
+            <div className="p-4 space-y-4 overflow-hidden">
               {/* Date Range */}
               <div>
                 <label className="text-xs text-muted-foreground mb-2 block">期間</label>
                 <div className="space-y-2">
-                  <DatePicker
-                    value={filters.dateFrom ? parseISO(filters.dateFrom) : undefined}
-                    onChange={(date) => setFilters({ ...filters, dateFrom: date ? format(date, "yyyy-MM-dd") : "" })}
-                    placeholder="開始日"
-                  />
-                  <DatePicker
-                    value={filters.dateTo ? parseISO(filters.dateTo) : undefined}
-                    onChange={(date) => setFilters({ ...filters, dateTo: date ? format(date, "yyyy-MM-dd") : "" })}
-                    placeholder="終了日"
-                  />
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-6">開始</span>
+                    <input
+                      type="date"
+                      value={filters.dateFrom}
+                      onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                      className="flex-1 h-9 px-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    {filters.dateFrom && (
+                      <button
+                        type="button"
+                        onClick={() => setFilters({ ...filters, dateFrom: "" })}
+                        className="p-1 text-muted-foreground hover:text-foreground shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-6">終了</span>
+                    <input
+                      type="date"
+                      value={filters.dateTo}
+                      onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                      className="flex-1 h-9 px-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    {filters.dateTo && (
+                      <button
+                        type="button"
+                        onClick={() => setFilters({ ...filters, dateTo: "" })}
+                        className="p-1 text-muted-foreground hover:text-foreground shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 

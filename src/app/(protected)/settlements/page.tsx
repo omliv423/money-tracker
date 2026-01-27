@@ -6,6 +6,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Users, ArrowUpRight, ArrowDownLeft, Pencil, Trash2, ChevronDown, ChevronUp, Check, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -99,7 +100,7 @@ export default function SettlementsPage() {
   const [selectedCounterparty, setSelectedCounterparty] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
   const [depositNote, setDepositNote] = useState("");
-  const [depositDate, setDepositDate] = useState("");
+  const [depositDate, setDepositDate] = useState<Date | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -304,7 +305,7 @@ export default function SettlementsPage() {
     setSelectedCounterparty(counterparty);
     setDepositAmount("");
     setDepositNote("");
-    setDepositDate(format(new Date(), "yyyy-MM-dd"));
+    setDepositDate(new Date());
     if (cashAccounts.length > 0 && !selectedAccountId) {
       setSelectedAccountId(cashAccounts[0].id);
     }
@@ -317,7 +318,7 @@ export default function SettlementsPage() {
     setSelectedCounterparty(settlement.counterparty);
     setDepositAmount(Math.abs(settlement.amount).toString());
     setDepositNote(settlement.note || "");
-    setDepositDate(settlement.date);
+    setDepositDate(new Date(settlement.date));
     setShowDepositDialog(true);
   };
 
@@ -334,7 +335,7 @@ export default function SettlementsPage() {
       await supabase
         .from("settlements")
         .update({
-          date: depositDate,
+          date: depositDate ? format(depositDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
           counterparty: selectedCounterparty,
           amount: signedAmount,
           note: depositNote || null,
@@ -373,7 +374,7 @@ export default function SettlementsPage() {
         .from("settlements")
         .insert({
           user_id: user?.id,
-          date: depositDate,
+          date: depositDate ? format(depositDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
           counterparty: selectedCounterparty,
           amount: signedAmount,
           note: depositNote || null,
@@ -932,7 +933,7 @@ export default function SettlementsPage() {
                   setDepositType("receive");
                   setDepositAmount("");
                   setDepositNote("");
-                  setDepositDate(format(new Date(), "yyyy-MM-dd"));
+                  setDepositDate(new Date());
                   setShowDepositDialog(true);
                 }}
                 className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
@@ -949,7 +950,7 @@ export default function SettlementsPage() {
                   setDepositType("pay");
                   setDepositAmount("");
                   setDepositNote("");
-                  setDepositDate(format(new Date(), "yyyy-MM-dd"));
+                  setDepositDate(new Date());
                   setShowDepositDialog(true);
                 }}
                 className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
@@ -980,10 +981,10 @@ export default function SettlementsPage() {
           <div className="space-y-4 pt-4">
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">日付</label>
-              <Input
-                type="date"
+              <DatePicker
                 value={depositDate}
-                onChange={(e) => setDepositDate(e.target.value)}
+                onChange={(date) => setDepositDate(date ?? null)}
+                placeholder="日付を選択"
               />
             </div>
             <div>

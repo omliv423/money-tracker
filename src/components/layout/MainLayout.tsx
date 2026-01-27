@@ -52,7 +52,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
         </div>
       )}
-      <main className="mx-auto max-w-lg px-4 py-6 md:max-w-4xl md:px-6 md:py-8 lg:max-w-6xl">
+      <main className="mx-auto max-w-lg px-4 py-3 md:max-w-4xl md:px-6 md:py-8 lg:max-w-6xl">
         {children}
       </main>
       <BottomNav />

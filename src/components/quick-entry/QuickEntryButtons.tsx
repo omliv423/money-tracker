@@ -20,7 +20,11 @@ type QuickEntry = Tables<"quick_entries"> & {
   category?: { name: string } | null;
 };
 
-export function QuickEntryButtons() {
+interface QuickEntryButtonsProps {
+  embedded?: boolean;
+}
+
+export function QuickEntryButtons({ embedded = false }: QuickEntryButtonsProps) {
   const { user } = useAuth();
   const [items, setItems] = useState<QuickEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,8 +110,77 @@ export function QuickEntryButtons() {
     fetchData();
   };
 
-  if (isLoading || items.length === 0) {
+  if (isLoading) {
     return null;
+  }
+
+  if (items.length === 0) {
+    return embedded ? (
+      <div className="text-center py-8 text-muted-foreground">
+        クイック入力はありません
+      </div>
+    ) : null;
+  }
+
+  // Embedded mode - show content directly
+  if (embedded) {
+    return (
+      <>
+        <div className="flex flex-wrap gap-2">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => handleQuickEntryClick(item)}
+              className="px-3 py-2 bg-secondary hover:bg-accent rounded-lg text-sm transition-colors flex items-center gap-1"
+            >
+              <Zap className="w-3 h-3" />
+              {item.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Amount Dialog */}
+        <Dialog open={!!selectedEntry} onOpenChange={() => setSelectedEntry(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{selectedEntry?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div className="text-sm text-muted-foreground space-y-1">
+                {selectedEntry?.category && (
+                  <p>カテゴリ: {selectedEntry.category.name}</p>
+                )}
+                {selectedEntry?.account && (
+                  <p>口座: {selectedEntry.account.name}</p>
+                )}
+                {selectedEntry?.counterparty && (
+                  <p>相手先: {selectedEntry.counterparty}</p>
+                )}
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">
+                  金額 <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  type="number"
+                  placeholder="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <Button
+                onClick={handleSave}
+                disabled={!amount || parseInt(amount, 10) <= 0 || isSaving}
+                className="w-full"
+              >
+                {isSaving ? "登録中..." : "登録する"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
   }
 
   return (

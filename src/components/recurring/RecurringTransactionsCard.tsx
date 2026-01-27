@@ -25,7 +25,11 @@ type RecurringTransaction = {
   }[];
 };
 
-export function RecurringTransactionsCard() {
+interface RecurringTransactionsCardProps {
+  embedded?: boolean;
+}
+
+export function RecurringTransactionsCard({ embedded = false }: RecurringTransactionsCardProps) {
   const { user } = useAuth();
   const { filterByUser } = useViewMode();
   const [items, setItems] = useState<RecurringTransaction[]>([]);
@@ -167,7 +171,70 @@ export function RecurringTransactionsCard() {
   }
 
   if (items.length === 0) {
-    return null;
+    return embedded ? (
+      <div className="text-center py-8 text-muted-foreground">
+        定期取引はありません
+      </div>
+    ) : null;
+  }
+
+  // Embedded mode - show content directly without card wrapper
+  if (embedded) {
+    return (
+      <div className="space-y-2">
+        {/* Pending items */}
+        {pendingItems.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center justify-between bg-secondary/50 rounded-lg p-3"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="font-medium truncate">{item.name}</p>
+              <div className="flex gap-2 text-xs text-muted-foreground">
+                <span>{item.day_of_month}日</span>
+                <span>•</span>
+                <span className="font-mono">
+                  ¥{item.total_amount.toLocaleString()}
+                </span>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => handleRegister(item)}
+              disabled={registeringId === item.id}
+              className="ml-2"
+            >
+              {registeringId === item.id ? "登録中..." : "登録"}
+            </Button>
+          </div>
+        ))}
+
+        {/* Completed items */}
+        {completedItems.length > 0 && (
+          <div className="pt-2 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-2">今月登録済み</p>
+            {completedItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between rounded-lg p-2 opacity-50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm truncate">{item.name}</p>
+                </div>
+                <Check className="w-4 h-4 text-primary" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* All done */}
+        {pendingItems.length === 0 && completedItems.length > 0 && (
+          <div className="text-center py-2 text-sm text-muted-foreground">
+            今月の定期取引はすべて登録済みです
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
