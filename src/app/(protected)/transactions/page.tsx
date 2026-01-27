@@ -276,11 +276,11 @@ function TransactionsContent() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground w-6">開始</span>
-                    <input
+                    <Input
                       type="date"
                       value={filters.dateFrom}
                       onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-                      className="flex-1 h-9 px-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="flex-1"
                     />
                     {filters.dateFrom && (
                       <button
@@ -294,11 +294,11 @@ function TransactionsContent() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground w-6">終了</span>
-                    <input
+                    <Input
                       type="date"
                       value={filters.dateTo}
                       onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-                      className="flex-1 h-9 px-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="flex-1"
                     />
                     {filters.dateTo && (
                       <button
