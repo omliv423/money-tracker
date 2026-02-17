@@ -233,7 +233,7 @@ export default function HouseholdSettingsPage() {
     }
 
     const baseUrl = window.location.origin;
-    setInviteLink(`${baseUrl}/settings/household/accept?token=${token}`);
+    setInviteLink(`${baseUrl}/invite?token=${token}`);
     fetchData();
     setIsInviting(false);
   };
