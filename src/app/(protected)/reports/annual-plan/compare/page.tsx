@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, AlertTriangle, Check } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, TrendingUp, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase, type Tables } from "@/lib/supabase";
 import { startOfMonth, endOfMonth, format } from "date-fns";
@@ -161,7 +161,7 @@ function CompareContent() {
     );
   }
 
-  const renderCompareTable = (
+  const renderCompareCards = (
     type: "income" | "expense",
     data: CompareData[],
     totals: { planned: number; actual: number },
@@ -169,93 +169,112 @@ function CompareContent() {
     title: string
   ) => {
     const isExpense = type === "expense";
+    const totalPercentage = totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
+    const remaining = totals.planned - totals.actual;
+    const isTotalWarning = isExpense ? totalPercentage > 100 : totalPercentage < 100;
+    const barWidth = Math.min(totalPercentage, 100);
+    const totalBarColor = isExpense
+      ? (totalPercentage > 100 ? "bg-red-500" : "bg-emerald-500")
+      : (totalPercentage >= 100 ? "bg-emerald-500" : "bg-orange-500");
 
     return (
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center gap-2">
-          {icon}
-          <h2 className="font-medium">{title}</h2>
+      <div className="space-y-3">
+        {/* セクションヘッダー + サマリーカード */}
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-2 mb-3">
+            {icon}
+            <h2 className="font-medium">{title}</h2>
+          </div>
+          <div className="flex items-start justify-between mb-3">
+            <div className="space-y-0.5">
+              <div className="text-sm text-muted-foreground">
+                予算 <span className="tabular-nums">¥{totals.planned.toLocaleString()}</span>
+              </div>
+              <div className="text-lg font-bold tabular-nums">
+                {isExpense ? "支出" : "収入"} ¥{totals.actual.toLocaleString()}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">残り</div>
+              <div className={`text-lg font-bold tabular-nums ${remaining < 0 ? "text-red-500" : ""}`}>
+                {remaining < 0 ? "-" : ""}¥{Math.abs(remaining).toLocaleString()}
+              </div>
+            </div>
+          </div>
+          {/* プログレスバー */}
+          <div className="w-full bg-muted rounded-full h-2.5">
+            <div
+              className={`h-2.5 rounded-full transition-all ${totalBarColor}`}
+              style={{ width: `${barWidth}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className={`text-xs font-medium tabular-nums ${isTotalWarning ? (isExpense ? "text-red-500" : "text-orange-500") : "text-emerald-500"}`}>
+              {totalPercentage.toFixed(0)}%
+            </span>
+            {totalPercentage > 100 && (
+              <span className="text-xs text-red-500">
+                {isExpense ? "超過" : ""}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th className="text-left p-3 font-medium">カテゴリ</th>
-                <th className="text-right p-3 font-medium">計画</th>
-                <th className="text-right p-3 font-medium">実績</th>
-                <th className="text-right p-3 font-medium">差分</th>
-                <th className="text-right p-3 font-medium">達成率</th>
-                <th className="p-3 w-10"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-8 text-muted-foreground">
-                    データがありません
-                  </td>
-                </tr>
-              ) : (
-                <>
-                  {data.map((item) => {
-                    // 支出の場合：超過は警告、収入の場合：未達は警告
-                    const isWarning = isExpense
-                      ? item.percentage > 100
-                      : item.planned > 0 && item.percentage < 100;
-                    const isGood = isExpense
-                      ? item.percentage <= 100
-                      : item.percentage >= 100;
 
-                    return (
-                      <tr key={item.categoryId} className="border-b border-border">
-                        <td className="p-3 font-medium">{item.categoryName}</td>
-                        <td className="text-right p-3 tabular-nums text-muted-foreground">
-                          ¥{item.planned.toLocaleString()}
-                        </td>
-                        <td className="text-right p-3 tabular-nums font-medium">
-                          ¥{item.actual.toLocaleString()}
-                        </td>
-                        <td className={`text-right p-3 tabular-nums ${item.diff >= 0 ? (isExpense ? "text-expense" : "text-income") : (isExpense ? "text-income" : "text-expense")}`}>
-                          {item.diff >= 0 ? "+" : ""}¥{item.diff.toLocaleString()}
-                        </td>
-                        <td className={`text-right p-3 tabular-nums font-medium ${isWarning ? "text-orange-500" : isGood ? "text-income" : ""}`}>
-                          {item.planned > 0 ? `${item.percentage.toFixed(0)}%` : "-"}
-                        </td>
-                        <td className="p-3">
-                          {isWarning && <AlertTriangle className="w-4 h-4 text-orange-500" />}
-                          {isGood && item.planned > 0 && <Check className="w-4 h-4 text-income" />}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  <tr className="bg-muted/30 font-medium">
-                    <td className="p-3">合計</td>
-                    <td className="text-right p-3 tabular-nums">
-                      ¥{totals.planned.toLocaleString()}
-                    </td>
-                    <td className="text-right p-3 tabular-nums">
-                      ¥{totals.actual.toLocaleString()}
-                    </td>
-                    <td className={`text-right p-3 tabular-nums ${
-                      totals.actual - totals.planned >= 0
-                        ? (isExpense ? "text-expense" : "text-income")
-                        : (isExpense ? "text-income" : "text-expense")
-                    }`}>
-                      {totals.actual - totals.planned >= 0 ? "+" : ""}
-                      ¥{(totals.actual - totals.planned).toLocaleString()}
-                    </td>
-                    <td className="text-right p-3 tabular-nums">
-                      {totals.planned > 0
-                        ? `${((totals.actual / totals.planned) * 100).toFixed(0)}%`
-                        : "-"}
-                    </td>
-                    <td className="p-3"></td>
-                  </tr>
-                </>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* カテゴリ別カード */}
+        {data.length === 0 ? (
+          <div className="bg-card rounded-xl border border-border p-6 text-center text-muted-foreground">
+            データがありません
+          </div>
+        ) : (
+          data.map((item) => {
+            const itemRemaining = item.planned - item.actual;
+            const itemBarWidth = Math.min(item.percentage, 100);
+            const itemBarColor = isExpense
+              ? (item.percentage > 100 ? "bg-red-500" : "bg-emerald-500")
+              : (item.percentage >= 100 ? "bg-emerald-500" : "bg-orange-500");
+
+            return (
+              <div
+                key={item.categoryId}
+                className="bg-card rounded-xl border border-border p-4"
+              >
+                <div className="text-sm font-medium mb-2">{item.categoryName}</div>
+                <div className="flex items-end justify-between mb-2">
+                  <div className="space-y-0.5">
+                    <div className="text-xs text-muted-foreground tabular-nums">
+                      予算 ¥{item.planned.toLocaleString()}
+                    </div>
+                    <div className="text-base font-bold tabular-nums">
+                      ¥{item.actual.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-muted-foreground">残り</div>
+                    <div className={`text-sm font-semibold tabular-nums ${itemRemaining < 0 ? "text-red-500" : ""}`}>
+                      {itemRemaining < 0 ? "-" : ""}¥{Math.abs(itemRemaining).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+                {/* プログレスバー */}
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${itemBarColor}`}
+                    style={{ width: `${item.planned > 0 ? itemBarWidth : 0}%` }}
+                  />
+                </div>
+                <div className="text-right mt-1">
+                  <span className={`text-xs font-medium tabular-nums ${
+                    isExpense
+                      ? (item.percentage > 100 ? "text-red-500" : "text-emerald-500")
+                      : (item.percentage >= 100 ? "text-emerald-500" : "text-orange-500")
+                  }`}>
+                    {item.planned > 0 ? `${item.percentage.toFixed(0)}%` : "-"}
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     );
   };
@@ -343,7 +362,7 @@ function CompareContent() {
         </div>
 
         {/* 収入比較 */}
-        {renderCompareTable(
+        {renderCompareCards(
           "income",
           incomeData,
           incomeTotals,
@@ -352,7 +371,7 @@ function CompareContent() {
         )}
 
         {/* 支出比較 */}
-        {renderCompareTable(
+        {renderCompareCards(
           "expense",
           expenseData,
           expenseTotals,
