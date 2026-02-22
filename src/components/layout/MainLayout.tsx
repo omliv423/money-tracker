@@ -14,7 +14,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const { viewMode, setViewMode, isHouseholdMember } = useViewMode();
 
   return (
-    <div className="min-h-screen pb-24 md:pb-10 safe-area-top">
+    <div className="min-h-screen pb-32 md:pb-10 safe-area-top">
       <TopNav />
       {/* Mobile header with view mode toggle */}
       {isHouseholdMember && (
