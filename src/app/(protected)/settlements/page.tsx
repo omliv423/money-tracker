@@ -303,22 +303,22 @@ export default function SettlementsPage() {
   }, [selectedLines, allLinesForCounterparty]);
 
   // 確認画面の計算
+  // 立替(asset)=相手に請求する金額、借入(liability)=相手に返す金額
+  // 分担計算は不要（立替分はそのまま全額精算）
   const confirmData = useMemo(() => {
     const selectedList = allLinesForCounterparty.filter((l) => selectedLines.has(l.id));
-    const myPaid = selectedList
+    const assetTotal = selectedList
       .filter((l) => l.lineType === "asset")
       .reduce((sum, l) => sum + l.unsettledAmount, 0);
-    const theirPaid = selectedList
+    const liabilityTotal = selectedList
       .filter((l) => l.lineType === "liability")
       .reduce((sum, l) => sum + l.unsettledAmount, 0);
-    const total = myPaid + theirPaid;
-    const myShare = Math.ceil(total / 2);
-    const theirShare = total - myShare;
+    const total = assetTotal + liabilityTotal;
     // 正: 自分が相手に支払う、負: 相手が自分に支払う
-    const settlementAmount = myShare - myPaid;
+    const settlementAmount = liabilityTotal - assetTotal;
     const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "自分";
 
-    return { selectedList, myPaid, theirPaid, total, myShare, theirShare, settlementAmount, userName };
+    return { selectedList, assetTotal, liabilityTotal, total, settlementAmount, userName };
   }, [selectedLines, allLinesForCounterparty, user]);
 
   // --- ハンドラー ---
@@ -1069,57 +1069,41 @@ export default function SettlementsPage() {
                 </motion.div>
               ) : null}
 
-              {/* 精算対象の合計金額 */}
+              {/* 内訳 */}
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.15 }}
-                className="bg-card rounded-2xl p-5 border border-border"
-              >
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-0.5">精算対象の合計</p>
-                <p className="font-heading text-xl font-bold tabular-nums">
-                  ¥{confirmData.total.toLocaleString()}
-                </p>
-              </motion.div>
-
-              {/* 内訳テーブル */}
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
                 className="bg-card rounded-2xl border border-border overflow-hidden"
               >
-                <div className="grid grid-cols-3 text-sm">
-                  {/* ヘッダー */}
-                  <div className="p-3 text-center font-heading font-semibold text-xs bg-secondary/40 border-b border-border">
-                    {confirmData.userName}
-                  </div>
-                  <div className="p-3 bg-secondary/40 border-b border-border border-x border-border">
-                  </div>
-                  <div className="p-3 text-center font-heading font-semibold text-xs bg-secondary/40 border-b border-border">
-                    {activeCounterparty}
-                  </div>
-
-                  {/* 支払済み金額 */}
-                  <div className="p-3 text-center font-heading font-semibold tabular-nums">
-                    ¥{confirmData.myPaid.toLocaleString()}
-                  </div>
-                  <div className="p-3 text-center text-[11px] text-muted-foreground border-x border-border flex items-center justify-center">
-                    支払済み金額
-                  </div>
-                  <div className="p-3 text-center font-heading font-semibold tabular-nums">
-                    ¥{confirmData.theirPaid.toLocaleString()}
-                  </div>
-
-                  {/* 分担する額 */}
-                  <div className="p-3 text-center font-heading font-semibold tabular-nums border-t border-border bg-secondary/20">
-                    ¥{confirmData.myShare.toLocaleString()}
-                  </div>
-                  <div className="p-3 text-center text-[11px] text-muted-foreground border-x border-t border-border bg-secondary/20 flex items-center justify-center">
-                    分担する額
-                  </div>
-                  <div className="p-3 text-center font-heading font-semibold tabular-nums border-t border-border bg-secondary/20">
-                    ¥{confirmData.theirShare.toLocaleString()}
+                <div className="divide-y divide-border">
+                  {confirmData.assetTotal > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-income" />
+                        <span className="text-sm">立替分（受け取り）</span>
+                      </div>
+                      <span className="font-heading font-semibold tabular-nums text-income">
+                        ¥{confirmData.assetTotal.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {confirmData.liabilityTotal > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-expense" />
+                        <span className="text-sm">借入分（支払い）</span>
+                      </div>
+                      <span className="font-heading font-semibold tabular-nums text-expense">
+                        ¥{confirmData.liabilityTotal.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between px-4 py-3 bg-secondary/20">
+                    <span className="text-sm font-medium">差引精算額</span>
+                    <span className="font-heading font-bold tabular-nums text-base">
+                      ¥{Math.abs(confirmData.settlementAmount).toLocaleString()}
+                    </span>
                   </div>
                 </div>
               </motion.div>
