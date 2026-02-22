@@ -159,7 +159,11 @@ export default function HouseholdSettingsPage() {
         .eq("invited_email", user.email)
         .eq("status", "pending");
 
-      setPendingInvitations(invitations as unknown as PendingInvitation[] || []);
+      // Filter out invitations where the household join returned null (RLS restriction)
+      const validInvitations = (invitations || []).filter(
+        (inv: any) => inv.household != null
+      );
+      setPendingInvitations(validInvitations as unknown as PendingInvitation[]);
     }
 
     setIsLoading(false);

@@ -62,6 +62,13 @@ function AcceptInviteContent() {
         return;
       }
 
+      // household join may return null due to RLS restrictions
+      if (!data.household) {
+        setError("招待情報の読み込みに失敗しました。再度お試しください。");
+        setIsLoading(false);
+        return;
+      }
+
       setInvitation(data as unknown as InvitationDetails);
       setIsLoading(false);
     }
