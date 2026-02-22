@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Calendar, CreditCard, Wallet, Tag, Clock, Pencil, Trash2, Plus, X, Check, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Calendar, CreditCard, Wallet, Tag, Clock, Pencil, Trash2, Plus, X, Check, UserPlus, Users, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase, type Tables } from "@/lib/supabase";
 import { CategoryPicker } from "@/components/transaction/CategoryPicker";
 
@@ -87,6 +95,14 @@ export default function TransactionDetailPage({
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
+
+  // Partner transaction
+  const [showPartnerDialog, setShowPartnerDialog] = useState(false);
+  const [partnerCategoryId, setPartnerCategoryId] = useState("");
+  const [partnerCounterpartyName, setPartnerCounterpartyName] = useState("");
+  const [isCreatingPartner, setIsCreatingPartner] = useState(false);
+  const [partnerInfo, setPartnerInfo] = useState<{ userId: string; email: string } | null>(null);
+  const [partnerAccountId, setPartnerAccountId] = useState<string | null>(null);
 
   // Edit form state
   const [editDescription, setEditDescription] = useState("");
@@ -155,6 +171,81 @@ export default function TransactionDetailPage({
       if (accountsRes.data) setAccounts(accountsRes.data);
       if (categoriesRes.data) setCategories(categoriesRes.data);
       if (counterpartiesRes.data) setCounterparties(counterpartiesRes.data);
+
+      // Fetch partner info for proxy registration
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Get my household
+        const { data: myMembership } = await supabase
+          .from("household_members")
+          .select("household_id")
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .maybeSingle();
+
+        // Also check if user owns a household
+        const { data: ownedHousehold } = await supabase
+          .from("households")
+          .select("id")
+          .eq("owner_id", user.id)
+          .maybeSingle();
+
+        const householdId = ownedHousehold?.id || myMembership?.household_id;
+
+        if (householdId) {
+          // Get partner (other active member)
+          const { data: members } = await supabase
+            .from("household_members")
+            .select("user_id, invited_email")
+            .eq("household_id", householdId)
+            .eq("status", "active")
+            .neq("user_id", user.id);
+
+          // Also check household owner if I'm a member (not owner)
+          if (!ownedHousehold) {
+            const { data: household } = await supabase
+              .from("households")
+              .select("owner_id")
+              .eq("id", householdId)
+              .single();
+            if (household && household.owner_id !== user.id) {
+              setPartnerInfo({ userId: household.owner_id, email: "" });
+              // Get partner's first active account
+              const { data: partnerAccounts } = await supabase
+                .from("accounts")
+                .select("id")
+                .eq("user_id", household.owner_id)
+                .eq("is_active", true)
+                .order("name")
+                .limit(1);
+              if (partnerAccounts?.[0]) {
+                setPartnerAccountId(partnerAccounts[0].id);
+              }
+            }
+          } else if (members && members.length > 0) {
+            const partner = members[0];
+            if (partner.user_id) {
+              setPartnerInfo({ userId: partner.user_id, email: partner.invited_email || "" });
+              // Get partner's first active account
+              const { data: partnerAccounts } = await supabase
+                .from("accounts")
+                .select("id")
+                .eq("user_id", partner.user_id)
+                .eq("is_active", true)
+                .order("name")
+                .limit(1);
+              if (partnerAccounts?.[0]) {
+                setPartnerAccountId(partnerAccounts[0].id);
+              }
+            }
+          }
+
+          // Set current user's name as default counterparty
+          setPartnerCounterpartyName(
+            user.user_metadata?.full_name || user.email?.split("@")[0] || ""
+          );
+        }
+      }
 
       setIsLoading(false);
     }
@@ -390,6 +481,60 @@ export default function TransactionDetailPage({
       .eq("id", transaction.id);
     if (error) {
       setTransaction({ ...transaction, is_shared: !newValue });
+      return;
+    }
+    // 共有ONにした時、立替ラインがあればパートナー登録ダイアログを開く
+    if (newValue && partnerInfo && partnerAccountId) {
+      const assets = transaction.transaction_lines?.filter((l) => l.line_type === "asset") || [];
+      if (assets.length > 0) {
+        setPartnerCategoryId(assets[0].category_id);
+        setShowPartnerDialog(true);
+      }
+    }
+  };
+
+  // Asset lines for partner registration
+  const assetLines = transaction?.transaction_lines?.filter((l) => l.line_type === "asset") || [];
+  const assetTotal = assetLines.reduce((sum, l) => sum + l.amount, 0);
+  const canRegisterPartner = !isEditing && assetLines.length > 0 && partnerInfo && partnerAccountId;
+
+  const handleOpenPartnerDialog = () => {
+    if (assetLines.length > 0) {
+      setPartnerCategoryId(assetLines[0].category_id);
+    }
+    setShowPartnerDialog(true);
+  };
+
+  const handleCreatePartnerTransaction = async () => {
+    if (!transaction || !partnerInfo || !partnerAccountId) return;
+
+    setIsCreatingPartner(true);
+    try {
+      const { data, error } = await supabase.rpc("create_partner_transaction", {
+        p_partner_user_id: partnerInfo.userId,
+        p_date: transaction.date,
+        p_description: transaction.description,
+        p_amount: assetTotal,
+        p_account_id: partnerAccountId,
+        p_category_id: partnerCategoryId,
+        p_counterparty_name: partnerCounterpartyName,
+        p_is_shared: transaction.is_shared,
+      });
+
+      if (error) {
+        console.error("RPC error:", error);
+        alert("パートナー取引の作成に失敗しました: " + error.message);
+        return;
+      }
+
+      setShowPartnerDialog(false);
+      if (data) {
+        router.push(`/transactions/${data}`);
+      }
+    } catch (error) {
+      console.error("Create partner transaction error:", error);
+    } finally {
+      setIsCreatingPartner(false);
     }
   };
 
@@ -884,6 +1029,19 @@ export default function TransactionDetailPage({
                     </span>
                   </button>
                 </div>
+
+                {/* Partner Transaction Button */}
+                {canRegisterPartner && (
+                  <div className="mt-3">
+                    <button
+                      onClick={handleOpenPartnerDialog}
+                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-border bg-secondary hover:bg-accent transition-colors"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      <span className="text-sm">パートナー側を登録</span>
+                    </button>
+                  </div>
+                )}
               </motion.div>
             </div>
           </div>
@@ -907,6 +1065,71 @@ export default function TransactionDetailPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Partner Transaction Dialog */}
+      <Dialog open={showPartnerDialog} onOpenChange={setShowPartnerDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>パートナー側の取引を登録</DialogTitle>
+            <DialogDescription>
+              立替分をパートナーの費用 + 借入として登録します
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Amount (read-only) */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">金額</label>
+              <p className="text-lg font-bold">¥{assetTotal.toLocaleString("ja-JP")}</p>
+            </div>
+
+            {/* Description (read-only) */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">説明</label>
+              <p className="text-sm">{transaction.description}</p>
+            </div>
+
+            {/* Category (changeable) */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">カテゴリ</label>
+              <CategoryPicker
+                categories={categories}
+                selectedId={partnerCategoryId}
+                onSelect={setPartnerCategoryId}
+                type="expense"
+              />
+            </div>
+
+            {/* Counterparty name (your name as the lender) */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">借入相手先（あなたの名前）</label>
+              <Input
+                value={partnerCounterpartyName}
+                onChange={(e) => setPartnerCounterpartyName(e.target.value)}
+                placeholder="例: 太郎"
+              />
+              <p className="text-xs text-blue-500">
+                パートナーの精算画面にこの名前で借入が表示されます
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowPartnerDialog(false)}
+              disabled={isCreatingPartner}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleCreatePartnerTransaction}
+              disabled={isCreatingPartner || !partnerCounterpartyName.trim()}
+            >
+              {isCreatingPartner ? "登録中..." : "登録"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }

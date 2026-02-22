@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Account = Tables<"accounts">;
 
@@ -45,6 +46,7 @@ interface AccountGroup {
 }
 
 export default function CashSettlementsPage() {
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
   const [settledAccountGroups, setSettledAccountGroups] = useState<AccountGroup[]>([]);
@@ -76,6 +78,7 @@ export default function CashSettlementsPage() {
     setIsLoading(true);
 
     // Fetch both unsettled, settled transactions and cash accounts in parallel
+    const userId = user?.id ?? "";
     const [unsettledResponse, settledResponse, accountsResponse] = await Promise.all([
       supabase
         .from("transactions")
@@ -90,6 +93,7 @@ export default function CashSettlementsPage() {
           transaction_lines(line_type, amount)
         `)
         .eq("is_cash_settled", false)
+        .eq("user_id", userId)
         .order("date", { ascending: false }),
       supabase
         .from("transactions")
@@ -104,12 +108,14 @@ export default function CashSettlementsPage() {
           transaction_lines(line_type, amount)
         `)
         .eq("is_cash_settled", true)
+        .eq("user_id", userId)
         .order("date", { ascending: false })
         .limit(100),
       supabase
         .from("accounts")
         .select("*")
         .eq("is_active", true)
+        .eq("user_id", userId)
         .order("name"),
     ]);
 

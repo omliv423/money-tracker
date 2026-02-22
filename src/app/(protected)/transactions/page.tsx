@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ChevronRight, Calendar, Trash2, Filter, X, Users } from "lucide-react";
@@ -24,6 +24,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { CategoryPicker } from "@/components/transaction/CategoryPicker";
 
 type Account = Tables<"accounts">;
 type Category = Tables<"categories">;
@@ -62,6 +71,7 @@ interface Filters {
 
 function TransactionsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { filterByUser } = useViewMode();
   const { user } = useAuth();
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
@@ -71,6 +81,15 @@ function TransactionsContent() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Partner transaction
+  const [partnerInfo, setPartnerInfo] = useState<{ userId: string } | null>(null);
+  const [partnerAccountId, setPartnerAccountId] = useState<string | null>(null);
+  const [partnerCounterpartyName, setPartnerCounterpartyName] = useState("");
+  const [showPartnerDialog, setShowPartnerDialog] = useState(false);
+  const [partnerTargetTx, setPartnerTargetTx] = useState<Transaction | null>(null);
+  const [partnerCategoryId, setPartnerCategoryId] = useState("");
+  const [isCreatingPartner, setIsCreatingPartner] = useState(false);
 
   // Initialize with empty strings to avoid hydration mismatch
   const [filters, setFilters] = useState<Filters>({
@@ -133,7 +152,7 @@ function TransactionsContent() {
     if (filterByUser && user?.id) {
       txQuery = txQuery.eq("user_id", user.id);
     } else if (!filterByUser) {
-      txQuery = txQuery.eq("is_shared", true);
+      txQuery = txQuery.eq("is_shared", true).eq("paid_by_other", false);
     }
 
     // Build accounts query with optional user filter
@@ -164,6 +183,72 @@ function TransactionsContent() {
   useEffect(() => {
     fetchTransactions();
   }, [filterByUser, user?.id]);
+
+  // Fetch partner info
+  useEffect(() => {
+    async function fetchPartnerInfo() {
+      if (!user) return;
+
+      const { data: myMembership } = await supabase
+        .from("household_members")
+        .select("household_id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      const { data: ownedHousehold } = await supabase
+        .from("households")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+
+      const householdId = ownedHousehold?.id || myMembership?.household_id;
+      if (!householdId) return;
+
+      let partnerId: string | null = null;
+
+      if (!ownedHousehold) {
+        const { data: household } = await supabase
+          .from("households")
+          .select("owner_id")
+          .eq("id", householdId)
+          .single();
+        if (household && household.owner_id !== user.id) {
+          partnerId = household.owner_id;
+        }
+      } else {
+        const { data: members } = await supabase
+          .from("household_members")
+          .select("user_id")
+          .eq("household_id", householdId)
+          .eq("status", "active")
+          .neq("user_id", user.id);
+        if (members?.[0]?.user_id) {
+          partnerId = members[0].user_id;
+        }
+      }
+
+      if (partnerId) {
+        setPartnerInfo({ userId: partnerId });
+        const { data: partnerAccounts } = await supabase
+          .from("accounts")
+          .select("id")
+          .eq("user_id", partnerId)
+          .eq("is_active", true)
+          .order("name")
+          .limit(1);
+        if (partnerAccounts?.[0]) {
+          setPartnerAccountId(partnerAccounts[0].id);
+        }
+      }
+
+      setPartnerCounterpartyName(
+        user.user_metadata?.full_name || user.email?.split("@")[0] || ""
+      );
+    }
+
+    fetchPartnerInfo();
+  }, [user]);
 
   // Apply filters and group transactions
   const groupedTransactions = useMemo(() => {
@@ -250,6 +335,56 @@ function TransactionsContent() {
       setAllTransactions((prev) =>
         prev.map((tx) => (tx.id === txId ? { ...tx, is_shared: currentValue } : tx))
       );
+      return;
+    }
+    // 共有ONにした時、立替ラインがあればパートナー登録ダイアログを開く
+    if (newValue && partnerInfo && partnerAccountId) {
+      const tx = allTransactions.find((t) => t.id === txId);
+      if (tx) {
+        const assetLines = tx.transaction_lines?.filter((l) => l.line_type === "asset") || [];
+        if (assetLines.length > 0) {
+          setPartnerTargetTx(tx);
+          setPartnerCategoryId(assetLines[0].category_id || "");
+          setShowPartnerDialog(true);
+        }
+      }
+    }
+  };
+
+  const handleCreatePartnerTransaction = async () => {
+    if (!partnerTargetTx || !partnerInfo || !partnerAccountId) return;
+
+    const assetLines = partnerTargetTx.transaction_lines?.filter((l) => l.line_type === "asset") || [];
+    const assetTotal = assetLines.reduce((sum, l) => sum + l.amount, 0);
+
+    setIsCreatingPartner(true);
+    try {
+      const { data, error } = await supabase.rpc("create_partner_transaction", {
+        p_partner_user_id: partnerInfo.userId,
+        p_date: partnerTargetTx.date,
+        p_description: partnerTargetTx.description,
+        p_amount: assetTotal,
+        p_account_id: partnerAccountId,
+        p_category_id: partnerCategoryId,
+        p_counterparty_name: partnerCounterpartyName,
+        p_is_shared: true,
+      });
+
+      if (error) {
+        console.error("RPC error:", error);
+        alert("パートナー取引の作成に失敗しました: " + error.message);
+        return;
+      }
+
+      setShowPartnerDialog(false);
+      setPartnerTargetTx(null);
+      if (data) {
+        router.push(`/transactions/${data}`);
+      }
+    } catch (error) {
+      console.error("Create partner transaction error:", error);
+    } finally {
+      setIsCreatingPartner(false);
     }
   };
 
@@ -632,6 +767,77 @@ function TransactionsContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Partner Transaction Dialog */}
+      <Dialog open={showPartnerDialog} onOpenChange={(open) => {
+        setShowPartnerDialog(open);
+        if (!open) setPartnerTargetTx(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>パートナー側の取引を登録</DialogTitle>
+            <DialogDescription>
+              立替分をパートナーの費用 + 借入として登録します
+            </DialogDescription>
+          </DialogHeader>
+
+          {partnerTargetTx && (() => {
+            const assetLines = partnerTargetTx.transaction_lines?.filter((l) => l.line_type === "asset") || [];
+            const assetTotal = assetLines.reduce((sum, l) => sum + l.amount, 0);
+            return (
+              <div className="space-y-4 py-2">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">金額</label>
+                  <p className="text-lg font-bold">¥{assetTotal.toLocaleString("ja-JP")}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">説明</label>
+                  <p className="text-sm">{partnerTargetTx.description}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">カテゴリ</label>
+                  <CategoryPicker
+                    categories={categories}
+                    selectedId={partnerCategoryId}
+                    onSelect={setPartnerCategoryId}
+                    type="expense"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">借入相手先（あなたの名前）</label>
+                  <Input
+                    value={partnerCounterpartyName}
+                    onChange={(e) => setPartnerCounterpartyName(e.target.value)}
+                    placeholder="例: 太郎"
+                  />
+                  <p className="text-xs text-blue-500">
+                    パートナーの精算画面にこの名前で借入が表示されます
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setShowPartnerDialog(false); setPartnerTargetTx(null); }}
+              disabled={isCreatingPartner}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleCreatePartnerTransaction}
+              disabled={isCreatingPartner || !partnerCounterpartyName.trim()}
+            >
+              {isCreatingPartner ? "登録中..." : "登録"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }

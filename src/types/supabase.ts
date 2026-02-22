@@ -723,7 +723,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_partner_transaction: {
+        Args: {
+          p_partner_user_id: string
+          p_date: string
+          p_description: string
+          p_amount: number
+          p_account_id: string
+          p_category_id: string
+          p_counterparty_name: string
+          p_is_shared?: boolean
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

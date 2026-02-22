@@ -132,23 +132,25 @@ export default function SettlementsPage() {
       }
     }
 
-    // 精算可能金額を取得
+    // 精算可能金額を取得（自分のもののみ）
     const { data: balancesData } = await supabase
       .from("settlement_balances")
-      .select("*");
+      .select("*")
+      .eq("user_id", user?.id ?? "");
 
     if (balancesData) {
       setSettlementBalances(balancesData);
     }
 
-    // 未精算の立替/借入を集計
+    // 未精算の立替/借入を集計（自分の取引のみ）
     const { data: allLines } = await supabase
       .from("transaction_lines")
       .select(`
         id, counterparty, amount, line_type, is_settled, settled_amount,
-        transaction:transactions(date, description)
+        transaction:transactions!inner(date, description, user_id)
       `)
-      .not("counterparty", "is", null);
+      .not("counterparty", "is", null)
+      .eq("transactions.user_id", user?.id ?? "");
 
     if (allLines) {
       const counterpartyMap = new Map<string, CounterpartyData>();
@@ -206,10 +208,11 @@ export default function SettlementsPage() {
       setCounterpartyDataList(dataList.sort((a, b) => b.netAmount - a.netAmount));
     }
 
-    // 精算履歴を取得
+    // 精算履歴を取得（自分のもののみ）
     const { data: settlementData } = await supabase
       .from("settlements")
       .select("*")
+      .eq("user_id", user?.id ?? "")
       .order("date", { ascending: false })
       .limit(20);
 
@@ -971,12 +974,19 @@ export default function SettlementsPage() {
                         <span className="text-sm font-medium">
                           {selectedCount}件選択中
                         </span>
-                        <span className="font-heading font-bold tabular-nums">
-                          ¥{allLinesForCounterparty
-                            .filter((l) => selectedLines.has(l.id))
-                            .reduce((sum, l) => sum + l.unsettledAmount, 0)
-                            .toLocaleString()}
-                        </span>
+                        {(() => {
+                          const selected = allLinesForCounterparty.filter((l) => selectedLines.has(l.id));
+                          const selAsset = selected.filter((l) => l.lineType === "asset").reduce((s, l) => s + l.unsettledAmount, 0);
+                          const selLiability = selected.filter((l) => l.lineType === "liability").reduce((s, l) => s + l.unsettledAmount, 0);
+                          const net = selAsset - selLiability;
+                          return (
+                            <span className={`font-heading font-bold tabular-nums ${
+                              net > 0 ? "text-income" : net < 0 ? "text-expense" : ""
+                            }`}>
+                              {net > 0 ? "+" : net < 0 ? "-" : ""}¥{Math.abs(net).toLocaleString()}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="flex gap-2">
                         <Button
