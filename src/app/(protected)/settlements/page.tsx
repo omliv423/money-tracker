@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Users, ArrowUpRight, ArrowDownLeft, Pencil, Trash2, ChevronDown, ChevronUp, Check, Wallet } from "lucide-react";
+import { Users, ArrowUpRight, ArrowDownLeft, ArrowLeft, Pencil, Trash2, ChevronDown, ChevronUp, Check, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -81,6 +81,8 @@ interface Settlement {
   settlement_items?: SettlementItem[];
 }
 
+type ViewMode = "list" | "select" | "confirm";
+
 export default function SettlementsPage() {
   const { user } = useAuth();
   const [counterpartyDataList, setCounterpartyDataList] = useState<CounterpartyData[]>([]);
@@ -88,8 +90,11 @@ export default function SettlementsPage() {
   const [settlementBalances, setSettlementBalances] = useState<SettlementBalance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [cashAccounts, setCashAccounts] = useState<Account[]>([]);
-  const [expandedCounterparty, setExpandedCounterparty] = useState<string | null>(null);
   const [expandedSettlement, setExpandedSettlement] = useState<string | null>(null);
+
+  // 3ステップフロー
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [activeCounterparty, setActiveCounterparty] = useState<string | null>(null);
 
   // 選択状態の管理
   const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
@@ -103,11 +108,6 @@ export default function SettlementsPage() {
   const [depositDate, setDepositDate] = useState<Date | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-
-  // 精算確認ダイアログ
-  const [showSettleConfirmDialog, setShowSettleConfirmDialog] = useState(false);
-  const [settleType, setSettleType] = useState<"asset" | "liability">("asset");
-  const [settleCounterparty, setSettleCounterparty] = useState("");
 
   // Edit mode
   const [editingSettlement, setEditingSettlement] = useState<Settlement | null>(null);
@@ -245,31 +245,6 @@ export default function SettlementsPage() {
     fetchData();
   }, []);
 
-  // 選択中の項目の計算
-  const selectedAssetTotal = useMemo(() => {
-    let total = 0;
-    counterpartyDataList.forEach((data) => {
-      data.assetLines.forEach((line) => {
-        if (selectedLines.has(line.id)) {
-          total += line.unsettledAmount;
-        }
-      });
-    });
-    return total;
-  }, [selectedLines, counterpartyDataList]);
-
-  const selectedLiabilityTotal = useMemo(() => {
-    let total = 0;
-    counterpartyDataList.forEach((data) => {
-      data.liabilityLines.forEach((line) => {
-        if (selectedLines.has(line.id)) {
-          total += line.unsettledAmount;
-        }
-      });
-    });
-    return total;
-  }, [selectedLines, counterpartyDataList]);
-
   // 相手ごとの精算可能金額を取得
   const getBalance = (counterparty: string): SettlementBalance | undefined => {
     return settlementBalances.find((b) => b.counterparty === counterparty);
@@ -287,6 +262,73 @@ export default function SettlementsPage() {
     return Array.from(set).sort();
   }, [counterpartyDataList, settlementBalances]);
 
+  // アクティブな相手先のデータ
+  const activeData = useMemo(() => {
+    if (!activeCounterparty) return null;
+    return counterpartyDataList.find((d) => d.counterparty === activeCounterparty) || null;
+  }, [activeCounterparty, counterpartyDataList]);
+
+  // アクティブ相手先の全ライン（日付降順でグルーピング用）
+  const allLinesForCounterparty = useMemo(() => {
+    if (!activeData) return [];
+    return [...activeData.assetLines, ...activeData.liabilityLines]
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [activeData]);
+
+  // 日付でグルーピング
+  const linesGroupedByDate = useMemo(() => {
+    const groups: { date: string; lines: UnsettledLine[] }[] = [];
+    const map = new Map<string, UnsettledLine[]>();
+    for (const line of allLinesForCounterparty) {
+      const date = line.date;
+      if (!map.has(date)) {
+        map.set(date, []);
+      }
+      map.get(date)!.push(line);
+    }
+    map.forEach((lines, date) => {
+      groups.push({ date, lines });
+    });
+    return groups.sort((a, b) => b.date.localeCompare(a.date));
+  }, [allLinesForCounterparty]);
+
+  // 選択状態の計算
+  const selectedCount = useMemo(() => {
+    return allLinesForCounterparty.filter((l) => selectedLines.has(l.id)).length;
+  }, [selectedLines, allLinesForCounterparty]);
+
+  const allSelected = useMemo(() => {
+    return allLinesForCounterparty.length > 0 &&
+      allLinesForCounterparty.every((l) => selectedLines.has(l.id));
+  }, [selectedLines, allLinesForCounterparty]);
+
+  // 確認画面の計算
+  const confirmData = useMemo(() => {
+    const selectedList = allLinesForCounterparty.filter((l) => selectedLines.has(l.id));
+    const myPaid = selectedList
+      .filter((l) => l.lineType === "asset")
+      .reduce((sum, l) => sum + l.unsettledAmount, 0);
+    const theirPaid = selectedList
+      .filter((l) => l.lineType === "liability")
+      .reduce((sum, l) => sum + l.unsettledAmount, 0);
+    const total = myPaid + theirPaid;
+    const myShare = Math.ceil(total / 2);
+    const theirShare = total - myShare;
+    // 正: 自分が相手に支払う、負: 相手が自分に支払う
+    const settlementAmount = myShare - myPaid;
+    const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "自分";
+
+    return { selectedList, myPaid, theirPaid, total, myShare, theirShare, settlementAmount, userName };
+  }, [selectedLines, allLinesForCounterparty, user]);
+
+  // --- ハンドラー ---
+
+  const handleCounterpartyClick = (counterparty: string) => {
+    setActiveCounterparty(counterparty);
+    setSelectedLines(new Set());
+    setViewMode("select");
+  };
+
   const handleToggleLine = (lineId: string) => {
     setSelectedLines((prev) => {
       const next = new Set(prev);
@@ -297,6 +339,109 @@ export default function SettlementsPage() {
       }
       return next;
     });
+  };
+
+  const handleSelectAll = () => {
+    setSelectedLines((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        allLinesForCounterparty.forEach((l) => next.delete(l.id));
+      } else {
+        allLinesForCounterparty.forEach((l) => next.add(l.id));
+      }
+      return next;
+    });
+  };
+
+  const handleBackToList = () => {
+    setViewMode("list");
+    setActiveCounterparty(null);
+    setSelectedLines(new Set());
+  };
+
+  const handleBackToSelect = () => {
+    setViewMode("select");
+  };
+
+  // 未精算リストから外す
+  const handleExcludeFromList = async () => {
+    if (!activeCounterparty) return;
+    setIsSaving(true);
+
+    const linesToExclude = allLinesForCounterparty.filter((l) => selectedLines.has(l.id));
+
+    for (const line of linesToExclude) {
+      await supabase
+        .from("transaction_lines")
+        .update({
+          is_settled: true,
+          settled_amount: line.amount,
+        })
+        .eq("id", line.id);
+    }
+
+    setSelectedLines(new Set());
+    setIsSaving(false);
+    await fetchData();
+
+    // データ更新後、残りの未精算項目があるか確認
+    // fetchData後にcounterpartyDataListが更新されるので、listに戻る
+    setViewMode("list");
+    setActiveCounterparty(null);
+  };
+
+  // 精算する（確認画面から）
+  const handleSettleFromConfirm = async () => {
+    if (!activeCounterparty) return;
+    setIsSaving(true);
+
+    const selectedList = allLinesForCounterparty.filter((l) => selectedLines.has(l.id));
+
+    // 1. 精算記録を作成
+    const { data: newSettlement } = await supabase
+      .from("settlements")
+      .insert({
+        user_id: user?.id,
+        date: format(new Date(), "yyyy-MM-dd"),
+        counterparty: activeCounterparty,
+        amount: 0,
+        note: "精算",
+      })
+      .select()
+      .single();
+
+    // 2. 各項目を精算済みに更新
+    const settlementItems: { settlement_id: string; transaction_line_id: string; amount: number }[] = [];
+
+    for (const line of selectedList) {
+      const newSettledAmount = line.settledAmount + line.unsettledAmount;
+      await supabase
+        .from("transaction_lines")
+        .update({
+          settled_amount: newSettledAmount,
+          is_settled: newSettledAmount >= line.amount,
+        })
+        .eq("id", line.id);
+
+      if (newSettlement) {
+        settlementItems.push({
+          settlement_id: newSettlement.id,
+          transaction_line_id: line.id,
+          amount: line.unsettledAmount,
+        });
+      }
+    }
+
+    // 3. settlement_items を一括insert
+    if (settlementItems.length > 0) {
+      await (supabase as any).from("settlement_items").insert(settlementItems);
+    }
+
+    setSelectedLines(new Set());
+    setViewMode("list");
+    setActiveCounterparty(null);
+    setIsSaving(false);
+    fetchData();
   };
 
   const handleOpenDeposit = (type: "receive" | "pay", counterparty: string) => {
@@ -331,7 +476,6 @@ export default function SettlementsPage() {
     const signedAmount = depositType === "receive" ? amount : -amount;
 
     if (editingSettlement) {
-      // 編集モード: 既存の精算を更新
       await supabase
         .from("settlements")
         .update({
@@ -342,8 +486,6 @@ export default function SettlementsPage() {
         })
         .eq("id", editingSettlement.id);
     } else {
-      // 新規作成モード
-      // 1. settlement_balances をupsert
       const existingBalance = getBalance(selectedCounterparty);
 
       if (existingBalance) {
@@ -369,7 +511,6 @@ export default function SettlementsPage() {
           .insert(insertData);
       }
 
-      // 2. settlements に記録（履歴用）
       await supabase
         .from("settlements")
         .insert({
@@ -380,7 +521,6 @@ export default function SettlementsPage() {
           note: depositNote || null,
         });
 
-      // 3. 現預金口座の残高を更新
       if (selectedAccountId && amount > 0) {
         const selectedAccount = cashAccounts.find((a) => a.id === selectedAccountId);
         if (selectedAccount) {
@@ -403,106 +543,6 @@ export default function SettlementsPage() {
     fetchData();
   };
 
-  // 選択した項目を精算
-  const handleOpenSettleConfirm = (type: "asset" | "liability", counterparty: string) => {
-    setSettleType(type);
-    setSettleCounterparty(counterparty);
-    setShowSettleConfirmDialog(true);
-  };
-
-  const handleSettleSelectedLines = async () => {
-    if (!settleCounterparty) return;
-
-    setIsSaving(true);
-
-    const data = counterpartyDataList.find((d) => d.counterparty === settleCounterparty);
-    if (!data) {
-      setIsSaving(false);
-      return;
-    }
-
-    const balance = getBalance(settleCounterparty);
-    const lines = settleType === "asset" ? data.assetLines : data.liabilityLines;
-    const selectedLinesForCounterparty = lines.filter((l) => selectedLines.has(l.id));
-    const totalToSettle = selectedLinesForCounterparty.reduce((sum, l) => sum + l.unsettledAmount, 0);
-
-    // 残高チェック
-    const availableBalance = settleType === "asset"
-      ? (balance?.receive_balance ?? 0)
-      : (balance?.pay_balance ?? 0);
-
-    if (totalToSettle > availableBalance) {
-      alert(settleType === "asset"
-        ? `受取可能金額が不足しています。（必要: ¥${totalToSettle.toLocaleString()}、残高: ¥${availableBalance.toLocaleString()}）`
-        : `支払可能金額が不足しています。（必要: ¥${totalToSettle.toLocaleString()}、残高: ¥${availableBalance.toLocaleString()}）`
-      );
-      setIsSaving(false);
-      return;
-    }
-
-    // 1. 精算記録を作成
-    const { data: newSettlement } = await supabase
-      .from("settlements")
-      .insert({
-        user_id: user?.id,
-        date: format(new Date(), "yyyy-MM-dd"),
-        counterparty: settleCounterparty,
-        amount: 0, // 入金/支払ではないので0
-        note: settleType === "asset" ? "立替精算" : "借入返済",
-      })
-      .select()
-      .single();
-
-    // 2. 各項目を精算
-    const settlementItems: { settlement_id: string; transaction_line_id: string; amount: number }[] = [];
-
-    for (const line of selectedLinesForCounterparty) {
-      // transaction_lines.settled_amount を更新
-      const newSettledAmount = line.settledAmount + line.unsettledAmount;
-      await supabase
-        .from("transaction_lines")
-        .update({
-          settled_amount: newSettledAmount,
-          is_settled: newSettledAmount >= line.amount,
-        })
-        .eq("id", line.id);
-
-      // settlement_items を記録
-      if (newSettlement) {
-        settlementItems.push({
-          settlement_id: newSettlement.id,
-          transaction_line_id: line.id,
-          amount: line.unsettledAmount,
-        });
-      }
-    }
-
-    // 3. settlement_items を一括insert
-    if (settlementItems.length > 0) {
-      await (supabase as any).from("settlement_items").insert(settlementItems);
-    }
-
-    // 4. settlement_balances を減算
-    if (balance) {
-      const updates: { receive_balance?: number; pay_balance?: number } = {};
-      if (settleType === "asset") {
-        updates.receive_balance = balance.receive_balance - totalToSettle;
-      } else {
-        updates.pay_balance = balance.pay_balance - totalToSettle;
-      }
-      await supabase
-        .from("settlement_balances")
-        .update(updates)
-        .eq("id", balance.id);
-    }
-
-    // 選択をクリア
-    setSelectedLines(new Set());
-    setShowSettleConfirmDialog(false);
-    setIsSaving(false);
-    fetchData();
-  };
-
   const handleDeleteSettlement = async () => {
     if (!deleteId) return;
 
@@ -513,17 +553,6 @@ export default function SettlementsPage() {
 
     setDeleteId(null);
     fetchData();
-  };
-
-  // 選択中の相手ごとの金額集計
-  const getSelectedTotalForCounterparty = (counterparty: string, type: "asset" | "liability"): number => {
-    const data = counterpartyDataList.find((d) => d.counterparty === counterparty);
-    if (!data) return 0;
-
-    const lines = type === "asset" ? data.assetLines : data.liabilityLines;
-    return lines
-      .filter((l) => selectedLines.has(l.id))
-      .reduce((sum, l) => sum + l.unsettledAmount, 0);
   };
 
   if (isLoading) {
@@ -543,427 +572,518 @@ export default function SettlementsPage() {
   return (
     <MainLayout>
       <div className="space-y-6">
-        <h1 className="font-heading text-2xl font-bold">立替・精算</h1>
+        {/* ========== Step 1: 相手先一覧（リストビュー） ========== */}
+        {viewMode === "list" && (
+          <>
+            <h1 className="font-heading text-2xl font-bold">立替・精算</h1>
 
-        <div className="space-y-6 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
-          <div className="space-y-6">
-            {/* 未精算項目 */}
-            <div className="bg-card rounded-xl p-5 border border-border">
-              <h2 className="font-medium text-sm text-muted-foreground mb-4">
-                未精算の立替
-              </h2>
+            <div className="space-y-6 lg:grid lg:grid-cols-[1.1fr_0.9fr] lg:gap-6 lg:space-y-0">
+              <div className="space-y-6">
+                {/* 未精算項目 */}
+                <div className="bg-card rounded-xl p-5 border border-border">
+                  <h2 className="font-medium text-sm text-muted-foreground mb-4">
+                    未精算の立替
+                  </h2>
 
-              {counterpartyDataList.length === 0 ? (
-                <p className="text-center text-muted-foreground py-4">
-                  未精算の立替はありません
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  <AnimatePresence>
-                    {counterpartyDataList.map((data) => {
-                      const isExpanded = expandedCounterparty === data.counterparty;
-                      const balance = getBalance(data.counterparty);
-                      const selectedAsset = getSelectedTotalForCounterparty(data.counterparty, "asset");
-                      const selectedLiability = getSelectedTotalForCounterparty(data.counterparty, "liability");
-
-                      return (
-                        <motion.div
-                          key={data.counterparty}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="bg-secondary/30 rounded-lg overflow-hidden"
-                        >
-                          {/* Header row */}
-                          <div className="flex items-center justify-between p-3">
+                  {counterpartyDataList.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">
+                      未精算の立替はありません
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      <AnimatePresence>
+                        {counterpartyDataList.map((data) => (
+                          <motion.div
+                            key={data.counterparty}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-secondary/30 rounded-lg overflow-hidden"
+                          >
                             <button
-                              onClick={() => setExpandedCounterparty(isExpanded ? null : data.counterparty)}
-                              className="flex items-center gap-3 flex-1"
+                              onClick={() => handleCounterpartyClick(data.counterparty)}
+                              className="flex items-center justify-between p-3 w-full text-left hover:bg-secondary/50 transition-colors"
                             >
-                              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                                <Users className="w-5 h-5 text-muted-foreground" />
+                              <div className="flex items-center gap-3 flex-1">
+                                <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+                                  <Users className="w-5 h-5 text-muted-foreground" />
+                                </div>
+                                <div>
+                                  <p className="font-medium">{data.counterparty}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {data.assetLines.length + data.liabilityLines.length}件の未精算
+                                  </p>
+                                </div>
                               </div>
-                              <div className="text-left">
-                                <p className="font-medium">{data.counterparty}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {data.assetLines.length + data.liabilityLines.length}件の未精算
-                                </p>
-                              </div>
-                              {isExpanded ? (
-                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                              )}
-                            </button>
-                            <div className="flex items-center gap-2 ml-2">
                               <span className={`font-heading font-bold tabular-nums ${
                                 data.netAmount > 0 ? "text-income" : data.netAmount < 0 ? "text-expense" : ""
                               }`}>
                                 {data.netAmount > 0 ? "+" : ""}¥{Math.abs(data.netAmount).toLocaleString("ja-JP")}
                               </span>
-                            </div>
-                          </div>
+                            </button>
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
 
-                          {/* Expanded details */}
-                          <AnimatePresence>
-                            {isExpanded && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: "auto", opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="border-t border-border"
+                {/* 精算履歴 */}
+                <div>
+                  <h2 className="font-medium text-sm text-muted-foreground mb-3">
+                    精算履歴
+                  </h2>
+                  {settlements.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>精算履歴がありません</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {settlements.map((settlement) => {
+                        const isExpanded = expandedSettlement === settlement.id;
+                        const hasItems = settlement.settlement_items && settlement.settlement_items.length > 0;
+                        return (
+                          <div
+                            key={settlement.id}
+                            className="bg-card rounded-xl border border-border overflow-hidden"
+                          >
+                            <div className="p-4 flex items-center justify-between">
+                              <button
+                                onClick={() => hasItems && setExpandedSettlement(isExpanded ? null : settlement.id)}
+                                className={`flex-1 text-left ${hasItems ? 'cursor-pointer' : 'cursor-default'}`}
                               >
-                                <div className="p-3 space-y-4">
-                                  {/* 立替（受取待ち） */}
-                                  {data.assetLines.length > 0 && (
-                                    <div>
-                                      <div className="flex items-center justify-between mb-2">
-                                        <p className="text-sm font-medium text-income flex items-center gap-1">
-                                          <ArrowUpRight className="w-4 h-4" />
-                                          立替（受取待ち）
-                                        </p>
-                                        <span className="text-sm font-mono">
-                                          ¥{data.totalAsset.toLocaleString()}
-                                        </span>
-                                      </div>
-                                      <div className="space-y-1">
-                                        {data.assetLines.map((line) => (
-                                          <label
-                                            key={line.id}
-                                            className="flex items-center gap-3 text-sm py-1.5 px-2 rounded hover:bg-secondary/50 cursor-pointer"
-                                          >
-                                            <Checkbox
-                                              checked={selectedLines.has(line.id)}
-                                              onCheckedChange={() => handleToggleLine(line.id)}
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                              <p className="truncate">{line.description}</p>
-                                              <p className="text-xs text-muted-foreground">
-                                                {line.date}
-                                                {line.settledAmount > 0 && (
-                                                  <span className="ml-2">
-                                                    (一部精算済: ¥{line.settledAmount.toLocaleString()})
-                                                  </span>
-                                                )}
-                                              </p>
-                                            </div>
-                                            <span className="font-mono text-right">
-                                              ¥{line.unsettledAmount.toLocaleString()}
-                                            </span>
-                                          </label>
-                                        ))}
-                                      </div>
-                                      {/* 選択中の立替精算ボタン */}
-                                      {selectedAsset > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-border/50">
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-sm text-muted-foreground">
-                                              選択中: ¥{selectedAsset.toLocaleString()}
-                                            </span>
-                                            <Button
-                                              size="sm"
-                                              onClick={() => handleOpenSettleConfirm("asset", data.counterparty)}
-                                              disabled={(balance?.receive_balance ?? 0) < selectedAsset}
-                                            >
-                                              <Check className="w-4 h-4 mr-1" />
-                                              精算
-                                            </Button>
-                                          </div>
-                                          {(balance?.receive_balance ?? 0) < selectedAsset && (
-                                            <p className="text-xs text-destructive mt-1">
-                                              受取可能金額が不足しています
-                                            </p>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* 借入（返済待ち） */}
-                                  {data.liabilityLines.length > 0 && (
-                                    <div>
-                                      <div className="flex items-center justify-between mb-2">
-                                        <p className="text-sm font-medium text-expense flex items-center gap-1">
-                                          <ArrowDownLeft className="w-4 h-4" />
-                                          借入（返済待ち）
-                                        </p>
-                                        <span className="text-sm font-mono">
-                                          ¥{data.totalLiability.toLocaleString()}
-                                        </span>
-                                      </div>
-                                      <div className="space-y-1">
-                                        {data.liabilityLines.map((line) => (
-                                          <label
-                                            key={line.id}
-                                            className="flex items-center gap-3 text-sm py-1.5 px-2 rounded hover:bg-secondary/50 cursor-pointer"
-                                          >
-                                            <Checkbox
-                                              checked={selectedLines.has(line.id)}
-                                              onCheckedChange={() => handleToggleLine(line.id)}
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                              <p className="truncate">{line.description}</p>
-                                              <p className="text-xs text-muted-foreground">
-                                                {line.date}
-                                                {line.settledAmount > 0 && (
-                                                  <span className="ml-2">
-                                                    (一部返済済: ¥{line.settledAmount.toLocaleString()})
-                                                  </span>
-                                                )}
-                                              </p>
-                                            </div>
-                                            <span className="font-mono text-right">
-                                              ¥{line.unsettledAmount.toLocaleString()}
-                                            </span>
-                                          </label>
-                                        ))}
-                                      </div>
-                                      {/* 選択中の借入返済ボタン */}
-                                      {selectedLiability > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-border/50">
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-sm text-muted-foreground">
-                                              選択中: ¥{selectedLiability.toLocaleString()}
-                                            </span>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={() => handleOpenSettleConfirm("liability", data.counterparty)}
-                                              disabled={(balance?.pay_balance ?? 0) < selectedLiability}
-                                            >
-                                              <Check className="w-4 h-4 mr-1" />
-                                              返済
-                                            </Button>
-                                          </div>
-                                          {(balance?.pay_balance ?? 0) < selectedLiability && (
-                                            <p className="text-xs text-destructive mt-1">
-                                              支払可能金額が不足しています
-                                            </p>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium">{settlement.counterparty}</p>
+                                  {hasItems && (
+                                    isExpanded ? (
+                                      <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                    )
                                   )}
                                 </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                </div>
-              )}
-            </div>
-
-            {/* 精算履歴 */}
-            <div>
-              <h2 className="font-medium text-sm text-muted-foreground mb-3">
-                精算履歴
-              </h2>
-              {settlements.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>精算履歴がありません</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {settlements.map((settlement) => {
-                    const isExpanded = expandedSettlement === settlement.id;
-                    const hasItems = settlement.settlement_items && settlement.settlement_items.length > 0;
-                    return (
-                      <div
-                        key={settlement.id}
-                        className="bg-card rounded-xl border border-border overflow-hidden"
-                      >
-                        <div className="p-4 flex items-center justify-between">
-                          <button
-                            onClick={() => hasItems && setExpandedSettlement(isExpanded ? null : settlement.id)}
-                            className={`flex-1 text-left ${hasItems ? 'cursor-pointer' : 'cursor-default'}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium">{settlement.counterparty}</p>
-                              {hasItems && (
-                                isExpanded ? (
-                                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                                )
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              {format(new Date(settlement.date), "yyyy/M/d", { locale: ja })}
-                              {settlement.note && ` - ${settlement.note}`}
-                              {hasItems && ` (${settlement.settlement_items!.length}件)`}
-                            </p>
-                          </button>
-                          <div className="flex items-center gap-3">
-                            {settlement.amount !== 0 && (
-                              <span className={`font-heading font-bold tabular-nums ${
-                                settlement.amount > 0 ? "text-income" : "text-expense"
-                              }`}>
-                                {settlement.amount > 0 ? "+" : ""}¥{Math.abs(settlement.amount).toLocaleString("ja-JP")}
-                              </span>
-                            )}
-                            <button
-                              onClick={() => handleEditSettlement(settlement)}
-                              className="p-1.5 hover:bg-secondary rounded-md transition-colors"
-                            >
-                              <Pencil className="w-4 h-4 text-muted-foreground" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteId(settlement.id)}
-                              className="p-1.5 hover:bg-secondary rounded-md transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4 text-muted-foreground" />
-                            </button>
-                          </div>
-                        </div>
-                        {/* 内訳 */}
-                        <AnimatePresence>
-                          {isExpanded && hasItems && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="border-t border-border"
-                            >
-                              <div className="p-3 space-y-2 bg-secondary/30">
-                                {settlement.settlement_items!.map((item) => (
-                                  <div
-                                    key={item.id}
-                                    className="flex items-center justify-between text-sm py-1"
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <p className="truncate">
-                                        {item.transaction_line?.transaction?.description || "不明"}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {item.transaction_line?.transaction?.date || ""}
-                                      </p>
-                                    </div>
-                                    <span className="font-mono text-right ml-2">
-                                      ¥{item.amount.toLocaleString()}
-                                    </span>
-                                  </div>
-                                ))}
+                                <p className="text-xs text-muted-foreground">
+                                  {format(new Date(settlement.date), "yyyy/M/d", { locale: ja })}
+                                  {settlement.note && ` - ${settlement.note}`}
+                                  {hasItems && ` (${settlement.settlement_items!.length}件)`}
+                                </p>
+                              </button>
+                              <div className="flex items-center gap-3">
+                                {settlement.amount !== 0 && (
+                                  <span className={`font-heading font-bold tabular-nums ${
+                                    settlement.amount > 0 ? "text-income" : "text-expense"
+                                  }`}>
+                                    {settlement.amount > 0 ? "+" : ""}¥{Math.abs(settlement.amount).toLocaleString("ja-JP")}
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => handleEditSettlement(settlement)}
+                                  className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                                >
+                                  <Pencil className="w-4 h-4 text-muted-foreground" />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteId(settlement.id)}
+                                  className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+                                </button>
                               </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })}
+                            </div>
+                            {/* 内訳 */}
+                            <AnimatePresence>
+                              {isExpanded && hasItems && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="border-t border-border"
+                                >
+                                  <div className="p-3 space-y-2 bg-secondary/30">
+                                    {settlement.settlement_items!.map((item) => (
+                                      <div
+                                        key={item.id}
+                                        className="flex items-center justify-between text-sm py-1"
+                                      >
+                                        <div className="flex-1 min-w-0">
+                                          <p className="truncate">
+                                            {item.transaction_line?.transaction?.description || "不明"}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {item.transaction_line?.transaction?.date || ""}
+                                          </p>
+                                        </div>
+                                        <span className="font-mono text-right ml-2">
+                                          ¥{item.amount.toLocaleString()}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* 精算可能金額 */}
+              <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+                <div className="bg-card rounded-xl p-5 border border-border">
+                  <h2 className="font-medium text-sm text-muted-foreground mb-4 flex items-center gap-2">
+                    <Wallet className="w-4 h-4" />
+                    精算可能金額
+                  </h2>
+
+                  {allCounterparties.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4 text-sm">
+                      相手先がありません
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {allCounterparties.map((counterparty) => {
+                        const balance = getBalance(counterparty);
+                        const receiveBalance = balance?.receive_balance ?? 0;
+                        const payBalance = balance?.pay_balance ?? 0;
+
+                        return (
+                          <div
+                            key={counterparty}
+                            className="bg-secondary/30 rounded-lg p-3"
+                          >
+                            <p className="font-medium mb-2">{counterparty}</p>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">受取可能</span>
+                                <span className={`font-mono ${receiveBalance > 0 ? "text-income" : ""}`}>
+                                  ¥{receiveBalance.toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">支払可能</span>
+                                <span className={`font-mono ${payBalance > 0 ? "text-expense" : ""}`}>
+                                  ¥{payBalance.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 mt-3">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => handleOpenDeposit("receive", counterparty)}
+                              >
+                                <ArrowUpRight className="w-4 h-4 mr-1 text-income" />
+                                入金
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => handleOpenDeposit("pay", counterparty)}
+                              >
+                                <ArrowDownLeft className="w-4 h-4 mr-1 text-expense" />
+                                支払
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* クイックアクション */}
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-1">
+                  <button
+                    onClick={() => {
+                      setSelectedCounterparty("");
+                      setDepositType("receive");
+                      setDepositAmount("");
+                      setDepositNote("");
+                      setDepositDate(new Date());
+                      setShowDepositDialog(true);
+                    }}
+                    className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
+                  >
+                    <ArrowUpRight className="w-5 h-5 text-income mb-2" />
+                    <p className="font-medium">入金を記録</p>
+                    <p className="text-xs text-muted-foreground">
+                      お金を受け取った
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedCounterparty("");
+                      setDepositType("pay");
+                      setDepositAmount("");
+                      setDepositNote("");
+                      setDepositDate(new Date());
+                      setShowDepositDialog(true);
+                    }}
+                    className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
+                  >
+                    <ArrowDownLeft className="w-5 h-5 text-expense mb-2" />
+                    <p className="font-medium">支払を記録</p>
+                    <p className="text-xs text-muted-foreground">
+                      お金を支払った
+                    </p>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          </>
+        )}
 
-          {/* 精算可能金額 */}
-          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-            <div className="bg-card rounded-xl p-5 border border-border">
-              <h2 className="font-medium text-sm text-muted-foreground mb-4 flex items-center gap-2">
-                <Wallet className="w-4 h-4" />
-                精算可能金額
-              </h2>
+        {/* ========== Step 2: 選択モード ========== */}
+        {viewMode === "select" && activeCounterparty && (
+          <div className="min-h-[60vh]">
+            {/* ヘッダー */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleBackToList}
+                  className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <h1 className="font-heading text-xl font-bold">{activeCounterparty}</h1>
+              </div>
+              <Button variant="ghost" size="sm" onClick={handleBackToList}>
+                キャンセル
+              </Button>
+            </div>
 
-              {allCounterparties.length === 0 ? (
-                <p className="text-center text-muted-foreground py-4 text-sm">
-                  相手先がありません
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {allCounterparties.map((counterparty) => {
-                    const balance = getBalance(counterparty);
-                    const receiveBalance = balance?.receive_balance ?? 0;
-                    const payBalance = balance?.pay_balance ?? 0;
+            {/* すべて選択 */}
+            <div className="border-b border-border pb-3 mb-1">
+              <label className="flex items-center gap-3 py-2 px-2 rounded hover:bg-secondary/50 cursor-pointer">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={handleSelectAll}
+                />
+                <span className="text-sm font-medium">すべて選択</span>
+              </label>
+            </div>
 
-                    return (
-                      <div
-                        key={counterparty}
-                        className="bg-secondary/30 rounded-lg p-3"
+            {/* 項目リスト（日付グルーピング） */}
+            <div className="space-y-1 pb-24">
+              {linesGroupedByDate.map((group) => (
+                <div key={group.date}>
+                  <p className="text-xs text-muted-foreground px-2 pt-3 pb-1">
+                    {group.date ? format(new Date(group.date), "yyyy/M/d", { locale: ja }) : "日付なし"}
+                  </p>
+                  <div className="space-y-0.5">
+                    {group.lines.map((line) => (
+                      <label
+                        key={line.id}
+                        className="flex items-center gap-3 text-sm py-2.5 px-2 rounded hover:bg-secondary/50 cursor-pointer"
                       >
-                        <p className="font-medium mb-2">{counterparty}</p>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">受取可能</span>
-                            <span className={`font-mono ${receiveBalance > 0 ? "text-income" : ""}`}>
-                              ¥{receiveBalance.toLocaleString()}
-                            </span>
+                        <Checkbox
+                          checked={selectedLines.has(line.id)}
+                          onCheckedChange={() => handleToggleLine(line.id)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            {line.lineType === "asset" ? (
+                              <ArrowUpRight className="w-3.5 h-3.5 text-income flex-shrink-0" />
+                            ) : (
+                              <ArrowDownLeft className="w-3.5 h-3.5 text-expense flex-shrink-0" />
+                            )}
+                            <p className="truncate">{line.description}</p>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">支払可能</span>
-                            <span className={`font-mono ${payBalance > 0 ? "text-expense" : ""}`}>
-                              ¥{payBalance.toLocaleString()}
-                            </span>
-                          </div>
+                          {line.settledAmount > 0 && (
+                            <p className="text-xs text-muted-foreground ml-5">
+                              一部精算済: ¥{line.settledAmount.toLocaleString()}
+                            </p>
+                          )}
                         </div>
-                        <div className="flex gap-2 mt-3">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1"
-                            onClick={() => handleOpenDeposit("receive", counterparty)}
-                          >
-                            <ArrowUpRight className="w-4 h-4 mr-1 text-income" />
-                            入金
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1"
-                            onClick={() => handleOpenDeposit("pay", counterparty)}
-                          >
-                            <ArrowDownLeft className="w-4 h-4 mr-1 text-expense" />
-                            支払
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        <span className={`font-mono text-right tabular-nums ${
+                          line.lineType === "asset" ? "text-income" : "text-expense"
+                        }`}>
+                          {line.lineType === "liability" ? "-" : ""}¥{line.unsettledAmount.toLocaleString()}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
 
-            {/* クイックアクション */}
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-1">
+            {/* 下部固定アクションバー */}
+            <AnimatePresence>
+              {selectedCount > 0 && (
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 20, opacity: 0 }}
+                  className="fixed bottom-20 left-0 right-0 z-50 md:bottom-4"
+                >
+                  <div className="mx-auto max-w-lg px-4">
+                    <div className="bg-card border border-border rounded-xl p-3 shadow-lg flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground mr-auto">
+                        {selectedCount}件選択中
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExcludeFromList}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? "処理中..." : "リストから外す"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setViewMode("confirm")}
+                      >
+                        <Check className="w-4 h-4 mr-1" />
+                        精算する
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {/* ========== Step 3: 確認画面 ========== */}
+        {viewMode === "confirm" && activeCounterparty && (
+          <div className="min-h-[60vh]">
+            {/* ヘッダー */}
+            <div className="flex items-center gap-3 mb-6">
               <button
-                onClick={() => {
-                  setSelectedCounterparty("");
-                  setDepositType("receive");
-                  setDepositAmount("");
-                  setDepositNote("");
-                  setDepositDate(new Date());
-                  setShowDepositDialog(true);
-                }}
-                className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
+                onClick={handleBackToSelect}
+                className="p-1.5 hover:bg-secondary rounded-md transition-colors"
               >
-                <ArrowUpRight className="w-5 h-5 text-income mb-2" />
-                <p className="font-medium">入金を記録</p>
-                <p className="text-xs text-muted-foreground">
-                  お金を受け取った
-                </p>
+                <ArrowLeft className="w-5 h-5" />
               </button>
-              <button
-                onClick={() => {
-                  setSelectedCounterparty("");
-                  setDepositType("pay");
-                  setDepositAmount("");
-                  setDepositNote("");
-                  setDepositDate(new Date());
-                  setShowDepositDialog(true);
-                }}
-                className="bg-card rounded-xl p-4 border border-border text-left hover:bg-accent transition-colors"
+              <h1 className="font-heading text-xl font-bold">精算内容</h1>
+            </div>
+
+            <div className="space-y-5">
+              {/* 精算対象の金額 */}
+              <div className="bg-card rounded-xl p-5 border border-border">
+                <p className="text-sm text-muted-foreground mb-1">精算対象の金額</p>
+                <p className="font-heading text-2xl font-bold">
+                  ¥{confirmData.total.toLocaleString()}
+                </p>
+              </div>
+
+              {/* サマリーカード */}
+              {confirmData.settlementAmount !== 0 && (
+                <div className={`rounded-xl p-5 border-2 ${
+                  confirmData.settlementAmount > 0
+                    ? "bg-expense/5 border-expense/30"
+                    : "bg-income/5 border-income/30"
+                }`}>
+                  <p className="font-heading font-bold text-lg mb-1">
+                    {confirmData.settlementAmount > 0
+                      ? `${confirmData.userName} → ${activeCounterparty}`
+                      : `${activeCounterparty} → ${confirmData.userName}`
+                    }
+                  </p>
+                  <p className="text-2xl font-heading font-bold tabular-nums">
+                    精算額 ¥{Math.abs(confirmData.settlementAmount).toLocaleString()}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {confirmData.settlementAmount > 0
+                      ? `${confirmData.userName}から${activeCounterparty}へ支払い`
+                      : `${activeCounterparty}から${confirmData.userName}へ支払い`
+                    }
+                  </p>
+                </div>
+              )}
+
+              {confirmData.settlementAmount === 0 && confirmData.total > 0 && (
+                <div className="rounded-xl p-5 border-2 bg-secondary/30 border-border">
+                  <p className="font-heading font-bold text-lg">精算不要</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    お互いの立替金額が同額です
+                  </p>
+                </div>
+              )}
+
+              {/* 内訳テーブル */}
+              <div className="bg-card rounded-xl border border-border overflow-hidden">
+                <div className="grid grid-cols-3 text-sm">
+                  {/* ヘッダー */}
+                  <div className="p-3 text-center font-medium bg-secondary/30 border-b border-border">
+                    {confirmData.userName}
+                  </div>
+                  <div className="p-3 text-center text-muted-foreground bg-secondary/30 border-b border-border border-x border-border">
+                  </div>
+                  <div className="p-3 text-center font-medium bg-secondary/30 border-b border-border">
+                    {activeCounterparty}
+                  </div>
+
+                  {/* 支払済み金額 */}
+                  <div className="p-3 text-center font-mono tabular-nums">
+                    ¥{confirmData.myPaid.toLocaleString()}
+                  </div>
+                  <div className="p-3 text-center text-xs text-muted-foreground border-x border-border flex items-center justify-center">
+                    支払済み金額
+                  </div>
+                  <div className="p-3 text-center font-mono tabular-nums">
+                    ¥{confirmData.theirPaid.toLocaleString()}
+                  </div>
+
+                  {/* 分担する額 */}
+                  <div className="p-3 text-center font-mono tabular-nums border-t border-border">
+                    ¥{confirmData.myShare.toLocaleString()}
+                  </div>
+                  <div className="p-3 text-center text-xs text-muted-foreground border-x border-t border-border flex items-center justify-center">
+                    分担する額
+                  </div>
+                  <div className="p-3 text-center font-mono tabular-nums border-t border-border">
+                    ¥{confirmData.theirShare.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {/* 選択した項目一覧 */}
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  精算対象（{confirmData.selectedList.length}件）
+                </p>
+                <div className="bg-card rounded-xl border border-border divide-y divide-border">
+                  {confirmData.selectedList.map((line) => (
+                    <div key={line.id} className="flex items-center justify-between p-3 text-sm">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          {line.lineType === "asset" ? (
+                            <ArrowUpRight className="w-3.5 h-3.5 text-income flex-shrink-0" />
+                          ) : (
+                            <ArrowDownLeft className="w-3.5 h-3.5 text-expense flex-shrink-0" />
+                          )}
+                          <p className="truncate">{line.description}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground ml-5">
+                          {line.date ? format(new Date(line.date), "yyyy/M/d", { locale: ja }) : ""}
+                        </p>
+                      </div>
+                      <span className="font-mono text-right tabular-nums ml-2">
+                        ¥{line.unsettledAmount.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 精算するボタン */}
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handleSettleFromConfirm}
+                disabled={isSaving}
               >
-                <ArrowDownLeft className="w-5 h-5 text-expense mb-2" />
-                <p className="font-medium">支払を記録</p>
-                <p className="text-xs text-muted-foreground">
-                  お金を支払った
-                </p>
-              </button>
+                {isSaving ? "処理中..." : "精算する"}
+              </Button>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 入金/支払ダイアログ */}
@@ -1054,28 +1174,6 @@ export default function SettlementsPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* 精算確認ダイアログ */}
-      <AlertDialog open={showSettleConfirmDialog} onOpenChange={setShowSettleConfirmDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {settleType === "asset" ? "立替を精算しますか？" : "借入を返済しますか？"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {settleCounterparty}への{settleType === "asset" ? "立替" : "借入"}を精算します。
-              <br />
-              金額: ¥{getSelectedTotalForCounterparty(settleCounterparty, settleType).toLocaleString()}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSettleSelectedLines} disabled={isSaving}>
-              {isSaving ? "処理中..." : settleType === "asset" ? "精算する" : "返済する"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* 削除確認ダイアログ */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
