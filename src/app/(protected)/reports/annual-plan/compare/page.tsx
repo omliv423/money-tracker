@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, ChevronLeft, ChevronRight, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, TrendingUp, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase, type Tables } from "@/lib/supabase";
-import { startOfMonth, endOfMonth, format } from "date-fns";
+import { startOfMonth, endOfMonth, format, parseISO } from "date-fns";
+import { ja } from "date-fns/locale";
 
 type Category = Tables<"categories">;
 
@@ -20,7 +21,7 @@ interface TransactionLine {
   amount: number;
   line_type: string;
   category_id: string | null;
-  transaction: { date: string } | null;
+  transaction: { date: string; description: string } | null;
 }
 
 interface CompareData {
@@ -40,6 +41,7 @@ function CompareContent() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const fiscalYear = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
 
@@ -62,7 +64,7 @@ function CompareContent() {
           amount,
           line_type,
           category_id,
-          transaction:transactions(date)
+          transaction:transactions(date, description)
         `)
         .in("line_type", ["income", "expense"]),
       supabase
@@ -90,11 +92,34 @@ function CompareContent() {
     fetchData();
   }, [fiscalYear, selectedMonth]);
 
+  const toggleCard = (categoryId: string) => {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+      return next;
+    });
+  };
+
   // カテゴリ別に実績を集計
   const getActualByCategory = (categoryId: string): number => {
     return transactionLines
       .filter((line) => line.category_id === categoryId)
       .reduce((sum, line) => sum + line.amount, 0);
+  };
+
+  // カテゴリ別の取引明細を取得（日付降順）
+  const getLinesByCategory = (categoryId: string): TransactionLine[] => {
+    return transactionLines
+      .filter((line) => line.category_id === categoryId)
+      .sort((a, b) => {
+        const dateA = a.transaction?.date || "";
+        const dateB = b.transaction?.date || "";
+        return dateB.localeCompare(dateA);
+      });
   };
 
   // 比較データを生成
@@ -232,45 +257,99 @@ function CompareContent() {
             const itemBarColor = isExpense
               ? (item.percentage > 100 ? "bg-red-500" : "bg-emerald-500")
               : (item.percentage >= 100 ? "bg-emerald-500" : "bg-orange-500");
+            const isExpanded = expandedCards.has(item.categoryId);
+            const lines = isExpanded ? getLinesByCategory(item.categoryId) : [];
 
             return (
               <div
                 key={item.categoryId}
-                className="bg-card rounded-xl border border-border p-4"
+                className="bg-card rounded-xl border border-border overflow-hidden"
               >
-                <div className="text-sm font-medium mb-2">{item.categoryName}</div>
-                <div className="flex items-end justify-between mb-2">
-                  <div className="space-y-0.5">
-                    <div className="text-xs text-muted-foreground tabular-nums">
-                      予算 ¥{item.planned.toLocaleString()}
+                <button
+                  type="button"
+                  className="w-full p-4 text-left"
+                  onClick={() => toggleCard(item.categoryId)}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">{item.categoryName}</span>
+                    <motion.div
+                      animate={{ rotate: isExpanded ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    </motion.div>
+                  </div>
+                  <div className="flex items-end justify-between mb-2">
+                    <div className="space-y-0.5">
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        予算 ¥{item.planned.toLocaleString()}
+                      </div>
+                      <div className="text-base font-bold tabular-nums">
+                        ¥{item.actual.toLocaleString()}
+                      </div>
                     </div>
-                    <div className="text-base font-bold tabular-nums">
-                      ¥{item.actual.toLocaleString()}
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">残り</div>
+                      <div className={`text-sm font-semibold tabular-nums ${itemRemaining < 0 ? "text-red-500" : ""}`}>
+                        {itemRemaining < 0 ? "-" : ""}¥{Math.abs(itemRemaining).toLocaleString()}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground">残り</div>
-                    <div className={`text-sm font-semibold tabular-nums ${itemRemaining < 0 ? "text-red-500" : ""}`}>
-                      {itemRemaining < 0 ? "-" : ""}¥{Math.abs(itemRemaining).toLocaleString()}
-                    </div>
+                  {/* プログレスバー */}
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all ${itemBarColor}`}
+                      style={{ width: `${item.planned > 0 ? itemBarWidth : 0}%` }}
+                    />
                   </div>
-                </div>
-                {/* プログレスバー */}
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${itemBarColor}`}
-                    style={{ width: `${item.planned > 0 ? itemBarWidth : 0}%` }}
-                  />
-                </div>
-                <div className="text-right mt-1">
-                  <span className={`text-xs font-medium tabular-nums ${
-                    isExpense
-                      ? (item.percentage > 100 ? "text-red-500" : "text-emerald-500")
-                      : (item.percentage >= 100 ? "text-emerald-500" : "text-orange-500")
-                  }`}>
-                    {item.planned > 0 ? `${item.percentage.toFixed(0)}%` : "-"}
-                  </span>
-                </div>
+                  <div className="text-right mt-1">
+                    <span className={`text-xs font-medium tabular-nums ${
+                      isExpense
+                        ? (item.percentage > 100 ? "text-red-500" : "text-emerald-500")
+                        : (item.percentage >= 100 ? "text-emerald-500" : "text-orange-500")
+                    }`}>
+                      {item.planned > 0 ? `${item.percentage.toFixed(0)}%` : "-"}
+                    </span>
+                  </div>
+                </button>
+                {/* 展開時の明細リスト */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="border-t border-border px-4 py-2 space-y-1">
+                        {lines.length === 0 ? (
+                          <div className="text-xs text-muted-foreground py-2 text-center">
+                            取引がありません
+                          </div>
+                        ) : (
+                          lines.map((line, idx) => (
+                            <div key={idx} className="flex items-center justify-between py-1.5 text-sm">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-xs text-muted-foreground shrink-0">
+                                  {line.transaction?.date
+                                    ? format(parseISO(line.transaction.date), "M/d", { locale: ja })
+                                    : "-"}
+                                </span>
+                                <span className="truncate text-muted-foreground">
+                                  {line.transaction?.description || "（メモなし）"}
+                                </span>
+                              </div>
+                              <span className="tabular-nums font-medium shrink-0 ml-2">
+                                ¥{line.amount.toLocaleString()}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             );
           })
