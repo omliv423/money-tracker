@@ -56,6 +56,7 @@ interface TransactionLine {
   transaction: {
     date: string;
     user_id: string;
+    is_shared: boolean;
     counterparty: { id: string; name: string } | null;
   } | null;
 }
@@ -120,7 +121,7 @@ export default function PLReportPage() {
           amortization_start,
           amortization_end,
           category:categories(id, name, parent_id, type),
-          transaction:transactions(date, user_id, counterparty:counterparties(id, name))
+          transaction:transactions(date, user_id, is_shared, counterparty:counterparties(id, name))
         `);
 
       // Fetch all categories for parent lookup
@@ -137,11 +138,15 @@ export default function PLReportPage() {
         categoryMap.set(cat.id, { name: cat.name, parent_id: cat.parent_id });
       });
 
-      // Filter lines by user when in personal mode
+      // Filter lines by user when in personal mode, by is_shared when in shared mode
       let filteredLines = lines || [];
       if (filterByUser && user?.id) {
         filteredLines = filteredLines.filter((line: any) =>
           line.transaction?.user_id === user.id
+        );
+      } else if (!filterByUser) {
+        filteredLines = filteredLines.filter((line: any) =>
+          line.transaction?.is_shared === true
         );
       }
 

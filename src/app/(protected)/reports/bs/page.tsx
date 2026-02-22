@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, ChevronLeft, Tag, PieChart as PieChartIcon, Landmark, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, ChevronLeft, Tag, PieChart as PieChartIcon, Landmark, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import { supabase, type Tables } from "@/lib/supabase";
 import { useViewMode } from "@/components/providers/ViewModeProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -602,6 +602,14 @@ export default function BSReportPage() {
             </button>
           </div>
         </div>
+
+        {/* Shared mode warning banner */}
+        {!filterByUser && (
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>BSレポートは共有フィルタが適用されません。全データが表示されています。</span>
+          </div>
+        )}
 
         <div className="space-y-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0">
           <div className="space-y-4 lg:order-2 lg:sticky lg:top-24 lg:self-start">

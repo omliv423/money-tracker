@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ChevronRight, Calendar, Trash2, Filter, X } from "lucide-react";
+import { ChevronRight, Calendar, Trash2, Filter, X, Users } from "lucide-react";
 import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { supabase, type Tables } from "@/lib/supabase";
@@ -42,6 +42,7 @@ interface Transaction {
   total_amount: number;
   account_id: string | null;
   paid_by_other: boolean;
+  is_shared: boolean;
   account: { name: string } | null;
   transaction_lines: TransactionLine[];
 }
@@ -120,6 +121,7 @@ function TransactionsContent() {
         account_id,
         user_id,
         paid_by_other,
+        is_shared,
         account:accounts!transactions_account_id_fkey(name),
         transaction_lines(amount, line_type, category_id)
       `)
@@ -127,9 +129,11 @@ function TransactionsContent() {
       .order("created_at", { ascending: false })
       .limit(500);
 
-    // Filter by user when in personal mode
+    // Filter by user when in personal mode, by is_shared when in shared mode
     if (filterByUser && user?.id) {
       txQuery = txQuery.eq("user_id", user.id);
+    } else if (!filterByUser) {
+      txQuery = txQuery.eq("is_shared", true);
     }
 
     // Build accounts query with optional user filter
@@ -230,6 +234,24 @@ function TransactionsContent() {
     filters.transactionType !== "all" ||
     filters.dateFrom !== "" ||
     filters.dateTo !== "";
+
+  const handleToggleShared = async (txId: string, currentValue: boolean) => {
+    const newValue = !currentValue;
+    // Optimistic update
+    setAllTransactions((prev) =>
+      prev.map((tx) => (tx.id === txId ? { ...tx, is_shared: newValue } : tx))
+    );
+    const { error } = await supabase
+      .from("transactions")
+      .update({ is_shared: newValue })
+      .eq("id", txId);
+    if (error) {
+      // Revert on error
+      setAllTransactions((prev) =>
+        prev.map((tx) => (tx.id === txId ? { ...tx, is_shared: currentValue } : tx))
+      );
+    }
+  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -558,6 +580,17 @@ function TransactionsContent() {
                                         </div>
                                       </div>
                                     </Link>
+                                    <button
+                                      onClick={() => handleToggleShared(tx.id, tx.is_shared)}
+                                      className={`p-4 transition-colors ${
+                                        tx.is_shared
+                                          ? "text-primary hover:text-primary/80"
+                                          : "text-muted-foreground/40 hover:text-muted-foreground"
+                                      }`}
+                                      title={tx.is_shared ? "共有中" : "個人"}
+                                    >
+                                      <Users className="w-4 h-4" />
+                                    </button>
                                     <button
                                       onClick={() => setDeleteId(tx.id)}
                                       className="p-4 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"

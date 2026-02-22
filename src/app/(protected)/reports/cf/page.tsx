@@ -108,6 +108,7 @@ export default function CFReportPage() {
           description,
           total_amount,
           user_id,
+          is_shared,
           account:accounts!transactions_account_id_fkey(id, name),
           counterparty:counterparties(id, name),
           transaction_lines(amount, line_type, category:categories(id, name, parent_id, type))
@@ -117,6 +118,8 @@ export default function CFReportPage() {
         .order("payment_date", { ascending: false });
       if (filterByUser && user?.id) {
         txQuery = txQuery.eq("user_id", user.id);
+      } else if (!filterByUser) {
+        txQuery = txQuery.eq("is_shared", true);
       }
 
       // Fetch settlements (精算) for this month
@@ -256,12 +259,15 @@ export default function CFReportPage() {
           .from("transactions")
           .select(`
             user_id,
+            is_shared,
             transaction_lines(amount, line_type, category:categories(type))
           `)
           .gte("payment_date", mStart)
           .lte("payment_date", mEnd);
         if (filterByUser && user?.id) {
           monthTxQuery = monthTxQuery.eq("user_id", user.id);
+        } else if (!filterByUser) {
+          monthTxQuery = monthTxQuery.eq("is_shared", true);
         }
 
         let monthSettlementsQuery = supabase

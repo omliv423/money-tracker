@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Calendar, CreditCard, Wallet, Tag, Clock, Pencil, Trash2, Plus, X, Check, UserPlus } from "lucide-react";
+import { ArrowLeft, Calendar, CreditCard, Wallet, Tag, Clock, Pencil, Trash2, Plus, X, Check, UserPlus, Users } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,7 @@ interface Transaction {
   account_id: string;
   created_at: string;
   paid_by_other: boolean;
+  is_shared: boolean;
   account: { id: string; name: string } | null;
   transaction_lines: TransactionLine[];
 }
@@ -113,6 +114,7 @@ export default function TransactionDetailPage({
             account_id,
             created_at,
             paid_by_other,
+            is_shared,
             account:accounts!transactions_account_id_fkey(id, name),
             transaction_lines(
               id,
@@ -322,6 +324,7 @@ export default function TransactionDetailPage({
           account_id,
           created_at,
           paid_by_other,
+          is_shared,
           account:accounts!transactions_account_id_fkey(id, name),
           transaction_lines(
             id,
@@ -373,6 +376,19 @@ export default function TransactionDetailPage({
       router.push("/transactions");
     } catch (error) {
       console.error("Delete error:", error);
+    }
+  };
+
+  const handleToggleShared = async () => {
+    if (!transaction) return;
+    const newValue = !transaction.is_shared;
+    setTransaction({ ...transaction, is_shared: newValue });
+    const { error } = await supabase
+      .from("transactions")
+      .update({ is_shared: newValue })
+      .eq("id", transaction.id);
+    if (error) {
+      setTransaction({ ...transaction, is_shared: !newValue });
     }
   };
 
@@ -851,6 +867,23 @@ export default function TransactionDetailPage({
                       <p>{transaction.paid_by_other ? "立替えてもらった" : (transaction.account?.name || "不明")}</p>
                     </div>
                   </div>
+                </div>
+
+                {/* Shared Toggle */}
+                <div className="mt-4 pt-4 border-t border-border">
+                  <button
+                    onClick={handleToggleShared}
+                    className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border transition-colors ${
+                      transaction.is_shared
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-secondary border-border hover:bg-accent"
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    <span className="text-sm">
+                      {transaction.is_shared ? "共有中" : "個人（共有しない）"}
+                    </span>
+                  </button>
                 </div>
               </motion.div>
             </div>

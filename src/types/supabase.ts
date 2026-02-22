@@ -664,6 +664,7 @@ export type Database = {
           description: string
           id: string
           is_cash_settled: boolean | null
+          is_shared: boolean
           paid_by_other: boolean
           payment_date: string | null
           settled_amount: number | null
@@ -678,6 +679,7 @@ export type Database = {
           description: string
           id?: string
           is_cash_settled?: boolean | null
+          is_shared?: boolean
           paid_by_other?: boolean
           payment_date?: string | null
           settled_amount?: number | null
@@ -692,6 +694,7 @@ export type Database = {
           description?: string
           id?: string
           is_cash_settled?: boolean | null
+          is_shared?: boolean
           paid_by_other?: boolean
           payment_date?: string | null
           settled_amount?: number | null
