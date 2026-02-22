@@ -839,68 +839,111 @@ export default function SettlementsPage() {
         )}
 
         {/* ========== Step 2: 選択モード ========== */}
-        {viewMode === "select" && activeCounterparty && (
+        {viewMode === "select" && activeCounterparty && activeData && (
           <div className="min-h-[60vh]">
             {/* ヘッダー */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleBackToList}
-                  className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                  className="p-2 -ml-2 hover:bg-secondary rounded-full transition-colors"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
-                <h1 className="font-heading text-xl font-bold">{activeCounterparty}</h1>
+                <div>
+                  <h1 className="font-heading text-xl font-bold leading-tight">{activeCounterparty}</h1>
+                  <p className="text-xs text-muted-foreground">
+                    {allLinesForCounterparty.length}件の未精算
+                  </p>
+                </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={handleBackToList}>
+              <button
+                onClick={handleBackToList}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
                 キャンセル
-              </Button>
+              </button>
             </div>
+
+            {/* サマリーカード */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 }}
+              className="rounded-2xl p-4 mb-5 bg-gradient-to-br from-primary/[0.06] to-primary/[0.02] border border-primary/10"
+            >
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-0.5">差引金額</p>
+                  <p className={`font-heading text-2xl font-bold tabular-nums leading-tight ${
+                    activeData.netAmount > 0 ? "text-income" : activeData.netAmount < 0 ? "text-expense" : ""
+                  }`}>
+                    {activeData.netAmount > 0 ? "+" : ""}¥{Math.abs(activeData.netAmount).toLocaleString()}
+                  </p>
+                </div>
+                <div className="text-right text-[13px] space-y-0.5">
+                  <div className="flex items-center gap-2 justify-end">
+                    <span className="text-muted-foreground">立替</span>
+                    <span className="font-heading font-semibold tabular-nums text-income">
+                      ¥{activeData.totalAsset.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 justify-end">
+                    <span className="text-muted-foreground">借入</span>
+                    <span className="font-heading font-semibold tabular-nums text-expense">
+                      ¥{activeData.totalLiability.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
 
             {/* すべて選択 */}
-            <div className="border-b border-border pb-3 mb-1">
-              <label className="flex items-center gap-3 py-2 px-2 rounded hover:bg-secondary/50 cursor-pointer">
-                <Checkbox
-                  checked={allSelected}
-                  onCheckedChange={handleSelectAll}
-                />
-                <span className="text-sm font-medium">すべて選択</span>
-              </label>
-            </div>
+            <label className="flex items-center gap-3 py-3 px-4 mb-3 rounded-xl bg-secondary/40 hover:bg-secondary/60 cursor-pointer transition-colors">
+              <Checkbox
+                checked={allSelected}
+                onCheckedChange={handleSelectAll}
+              />
+              <span className="text-sm font-medium flex-1">すべて選択</span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {selectedCount}/{allLinesForCounterparty.length}
+              </span>
+            </label>
 
-            {/* 項目リスト（日付グルーピング） */}
-            <div className="space-y-1 pb-24">
-              {linesGroupedByDate.map((group) => (
-                <div key={group.date}>
-                  <p className="text-xs text-muted-foreground px-2 pt-3 pb-1">
-                    {group.date ? format(new Date(group.date), "yyyy/M/d", { locale: ja }) : "日付なし"}
+            {/* 項目リスト（日付グルーピング・カードベース） */}
+            <div className="space-y-4 pb-32">
+              {linesGroupedByDate.map((group, groupIdx) => (
+                <motion.div
+                  key={group.date}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: groupIdx * 0.04, duration: 0.3 }}
+                >
+                  <p className="text-xs font-medium text-muted-foreground px-1 mb-1.5 tracking-wide">
+                    {group.date ? format(new Date(group.date), "yyyy/M/d (E)", { locale: ja }) : "日付なし"}
                   </p>
-                  <div className="space-y-0.5">
+                  <div className="bg-card rounded-xl border border-border overflow-hidden divide-y divide-border">
                     {group.lines.map((line) => (
                       <label
                         key={line.id}
-                        className="flex items-center gap-3 text-sm py-2.5 px-2 rounded hover:bg-secondary/50 cursor-pointer"
+                        className="flex items-center gap-3 text-sm py-3 px-3 hover:bg-secondary/30 cursor-pointer transition-colors"
                       >
                         <Checkbox
                           checked={selectedLines.has(line.id)}
                           onCheckedChange={() => handleToggleLine(line.id)}
                         />
+                        <div className={`w-1 self-stretch rounded-full flex-shrink-0 ${
+                          line.lineType === "asset" ? "bg-income/70" : "bg-expense/70"
+                        }`} />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            {line.lineType === "asset" ? (
-                              <ArrowUpRight className="w-3.5 h-3.5 text-income flex-shrink-0" />
-                            ) : (
-                              <ArrowDownLeft className="w-3.5 h-3.5 text-expense flex-shrink-0" />
-                            )}
-                            <p className="truncate">{line.description}</p>
-                          </div>
+                          <p className="truncate font-medium leading-snug">{line.description}</p>
                           {line.settledAmount > 0 && (
-                            <p className="text-xs text-muted-foreground ml-5">
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
                               一部精算済: ¥{line.settledAmount.toLocaleString()}
                             </p>
                           )}
                         </div>
-                        <span className={`font-mono text-right tabular-nums ${
+                        <span className={`font-heading font-bold tabular-nums text-right ${
                           line.lineType === "asset" ? "text-income" : "text-expense"
                         }`}>
                           {line.lineType === "liability" ? "-" : ""}¥{line.unsettledAmount.toLocaleString()}
@@ -908,39 +951,50 @@ export default function SettlementsPage() {
                       </label>
                     ))}
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
 
-            {/* 下部固定アクションバー */}
+            {/* 下部固定アクションバー（グラスモーフィズム） */}
             <AnimatePresence>
               {selectedCount > 0 && (
                 <motion.div
-                  initial={{ y: 20, opacity: 0 }}
+                  initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: 20, opacity: 0 }}
+                  exit={{ y: 30, opacity: 0 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
                   className="fixed bottom-20 left-0 right-0 z-50 md:bottom-4"
                 >
                   <div className="mx-auto max-w-lg px-4">
-                    <div className="bg-card border border-border rounded-xl p-3 shadow-lg flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground mr-auto">
-                        {selectedCount}件選択中
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleExcludeFromList}
-                        disabled={isSaving}
-                      >
-                        {isSaving ? "処理中..." : "リストから外す"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => setViewMode("confirm")}
-                      >
-                        <Check className="w-4 h-4 mr-1" />
-                        精算する
-                      </Button>
+                    <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl p-4 shadow-2xl">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium">
+                          {selectedCount}件選択中
+                        </span>
+                        <span className="font-heading font-bold tabular-nums">
+                          ¥{allLinesForCounterparty
+                            .filter((l) => selectedLines.has(l.id))
+                            .reduce((sum, l) => sum + l.unsettledAmount, 0)
+                            .toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          className="flex-1 rounded-xl"
+                          onClick={handleExcludeFromList}
+                          disabled={isSaving}
+                        >
+                          {isSaving ? "処理中..." : "リストから外す"}
+                        </Button>
+                        <Button
+                          className="flex-1 rounded-xl"
+                          onClick={() => setViewMode("confirm")}
+                        >
+                          <Check className="w-4 h-4 mr-1" />
+                          精算する
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -951,12 +1005,17 @@ export default function SettlementsPage() {
 
         {/* ========== Step 3: 確認画面 ========== */}
         {viewMode === "confirm" && activeCounterparty && (
-          <div className="min-h-[60vh]">
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+            className="min-h-[60vh]"
+          >
             {/* ヘッダー */}
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center gap-3 mb-8">
               <button
                 onClick={handleBackToSelect}
-                className="p-1.5 hover:bg-secondary rounded-md transition-colors"
+                className="p-2 -ml-2 hover:bg-secondary rounded-full transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
@@ -964,125 +1023,153 @@ export default function SettlementsPage() {
             </div>
 
             <div className="space-y-5">
-              {/* 精算対象の金額 */}
-              <div className="bg-card rounded-xl p-5 border border-border">
-                <p className="text-sm text-muted-foreground mb-1">精算対象の金額</p>
-                <p className="font-heading text-2xl font-bold">
-                  ¥{confirmData.total.toLocaleString()}
-                </p>
-              </div>
-
-              {/* サマリーカード */}
-              {confirmData.settlementAmount !== 0 && (
-                <div className={`rounded-xl p-5 border-2 ${
-                  confirmData.settlementAmount > 0
-                    ? "bg-expense/5 border-expense/30"
-                    : "bg-income/5 border-income/30"
-                }`}>
-                  <p className="font-heading font-bold text-lg mb-1">
-                    {confirmData.settlementAmount > 0
-                      ? `${confirmData.userName} → ${activeCounterparty}`
-                      : `${activeCounterparty} → ${confirmData.userName}`
-                    }
+              {/* 精算額ヒーローカード */}
+              {confirmData.settlementAmount !== 0 ? (
+                <motion.div
+                  initial={{ scale: 0.96, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.1, duration: 0.35 }}
+                  className={`rounded-2xl p-6 ${
+                    confirmData.settlementAmount > 0
+                      ? "bg-gradient-to-br from-expense/10 via-expense/5 to-transparent border-2 border-expense/20"
+                      : "bg-gradient-to-br from-income/10 via-income/5 to-transparent border-2 border-income/20"
+                  }`}
+                >
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">精算額</p>
+                  <p className="font-heading text-3xl font-bold tabular-nums leading-tight mb-3">
+                    ¥{Math.abs(confirmData.settlementAmount).toLocaleString()}
                   </p>
-                  <p className="text-2xl font-heading font-bold tabular-nums">
-                    精算額 ¥{Math.abs(confirmData.settlementAmount).toLocaleString()}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium px-2 py-0.5 rounded-md bg-secondary/50">
+                      {confirmData.settlementAmount > 0 ? confirmData.userName : activeCounterparty}
+                    </span>
+                    <ArrowUpRight className="w-4 h-4 text-muted-foreground" />
+                    <span className="font-medium px-2 py-0.5 rounded-md bg-secondary/50">
+                      {confirmData.settlementAmount > 0 ? activeCounterparty : confirmData.userName}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
                     {confirmData.settlementAmount > 0
                       ? `${confirmData.userName}から${activeCounterparty}へ支払い`
                       : `${activeCounterparty}から${confirmData.userName}へ支払い`
                     }
                   </p>
-                </div>
-              )}
-
-              {confirmData.settlementAmount === 0 && confirmData.total > 0 && (
-                <div className="rounded-xl p-5 border-2 bg-secondary/30 border-border">
+                </motion.div>
+              ) : confirmData.total > 0 ? (
+                <motion.div
+                  initial={{ scale: 0.96, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.1 }}
+                  className="rounded-2xl p-6 bg-secondary/30 border-2 border-border"
+                >
                   <p className="font-heading font-bold text-lg">精算不要</p>
                   <p className="text-sm text-muted-foreground mt-1">
                     お互いの立替金額が同額です
                   </p>
-                </div>
-              )}
+                </motion.div>
+              ) : null}
+
+              {/* 精算対象の合計金額 */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="bg-card rounded-2xl p-5 border border-border"
+              >
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-0.5">精算対象の合計</p>
+                <p className="font-heading text-xl font-bold tabular-nums">
+                  ¥{confirmData.total.toLocaleString()}
+                </p>
+              </motion.div>
 
               {/* 内訳テーブル */}
-              <div className="bg-card rounded-xl border border-border overflow-hidden">
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-card rounded-2xl border border-border overflow-hidden"
+              >
                 <div className="grid grid-cols-3 text-sm">
                   {/* ヘッダー */}
-                  <div className="p-3 text-center font-medium bg-secondary/30 border-b border-border">
+                  <div className="p-3 text-center font-heading font-semibold text-xs bg-secondary/40 border-b border-border">
                     {confirmData.userName}
                   </div>
-                  <div className="p-3 text-center text-muted-foreground bg-secondary/30 border-b border-border border-x border-border">
+                  <div className="p-3 bg-secondary/40 border-b border-border border-x border-border">
                   </div>
-                  <div className="p-3 text-center font-medium bg-secondary/30 border-b border-border">
+                  <div className="p-3 text-center font-heading font-semibold text-xs bg-secondary/40 border-b border-border">
                     {activeCounterparty}
                   </div>
 
                   {/* 支払済み金額 */}
-                  <div className="p-3 text-center font-mono tabular-nums">
+                  <div className="p-3 text-center font-heading font-semibold tabular-nums">
                     ¥{confirmData.myPaid.toLocaleString()}
                   </div>
-                  <div className="p-3 text-center text-xs text-muted-foreground border-x border-border flex items-center justify-center">
+                  <div className="p-3 text-center text-[11px] text-muted-foreground border-x border-border flex items-center justify-center">
                     支払済み金額
                   </div>
-                  <div className="p-3 text-center font-mono tabular-nums">
+                  <div className="p-3 text-center font-heading font-semibold tabular-nums">
                     ¥{confirmData.theirPaid.toLocaleString()}
                   </div>
 
                   {/* 分担する額 */}
-                  <div className="p-3 text-center font-mono tabular-nums border-t border-border">
+                  <div className="p-3 text-center font-heading font-semibold tabular-nums border-t border-border bg-secondary/20">
                     ¥{confirmData.myShare.toLocaleString()}
                   </div>
-                  <div className="p-3 text-center text-xs text-muted-foreground border-x border-t border-border flex items-center justify-center">
+                  <div className="p-3 text-center text-[11px] text-muted-foreground border-x border-t border-border bg-secondary/20 flex items-center justify-center">
                     分担する額
                   </div>
-                  <div className="p-3 text-center font-mono tabular-nums border-t border-border">
+                  <div className="p-3 text-center font-heading font-semibold tabular-nums border-t border-border bg-secondary/20">
                     ¥{confirmData.theirShare.toLocaleString()}
                   </div>
                 </div>
-              </div>
+              </motion.div>
 
               {/* 選択した項目一覧 */}
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+              >
+                <p className="text-xs font-medium text-muted-foreground mb-2 px-1 tracking-wide">
                   精算対象（{confirmData.selectedList.length}件）
                 </p>
-                <div className="bg-card rounded-xl border border-border divide-y divide-border">
+                <div className="bg-card rounded-2xl border border-border divide-y divide-border overflow-hidden">
                   {confirmData.selectedList.map((line) => (
-                    <div key={line.id} className="flex items-center justify-between p-3 text-sm">
+                    <div key={line.id} className="flex items-center gap-3 p-3 text-sm">
+                      <div className={`w-1 self-stretch rounded-full flex-shrink-0 ${
+                        line.lineType === "asset" ? "bg-income/70" : "bg-expense/70"
+                      }`} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          {line.lineType === "asset" ? (
-                            <ArrowUpRight className="w-3.5 h-3.5 text-income flex-shrink-0" />
-                          ) : (
-                            <ArrowDownLeft className="w-3.5 h-3.5 text-expense flex-shrink-0" />
-                          )}
-                          <p className="truncate">{line.description}</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground ml-5">
-                          {line.date ? format(new Date(line.date), "yyyy/M/d", { locale: ja }) : ""}
+                        <p className="truncate font-medium leading-snug">{line.description}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {line.date ? format(new Date(line.date), "yyyy/M/d (E)", { locale: ja }) : ""}
                         </p>
                       </div>
-                      <span className="font-mono text-right tabular-nums ml-2">
+                      <span className="font-heading font-bold tabular-nums ml-2">
                         ¥{line.unsettledAmount.toLocaleString()}
                       </span>
                     </div>
                   ))}
                 </div>
-              </div>
+              </motion.div>
 
               {/* 精算するボタン */}
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={handleSettleFromConfirm}
-                disabled={isSaving}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
               >
-                {isSaving ? "処理中..." : "精算する"}
-              </Button>
+                <Button
+                  className="w-full h-12 text-base font-medium rounded-xl"
+                  size="lg"
+                  onClick={handleSettleFromConfirm}
+                  disabled={isSaving}
+                >
+                  {isSaving ? "処理中..." : "精算する"}
+                </Button>
+              </motion.div>
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
 
