@@ -79,10 +79,12 @@ function CompareContent() {
           amount,
           line_type,
           category_id,
-          transaction:transactions(date, description)
+          transaction:transactions!inner(date, description)
         `
           )
-          .in("line_type", ["income", "expense"]),
+          .in("line_type", ["income", "expense"])
+          .gte("transaction.date", monthStart)
+          .lte("transaction.date", monthEnd),
         supabase
           .from("categories")
           .select("*")
@@ -92,12 +94,7 @@ function CompareContent() {
       ]);
 
     setBudgetItems(budgetResponse.data || []);
-
-    const filteredLines = (linesResponse.data || []).filter((line: any) => {
-      const txDate = line.transaction?.date;
-      return txDate && txDate >= monthStart && txDate <= monthEnd;
-    });
-    setTransactionLines(filteredLines as TransactionLine[]);
+    setTransactionLines((linesResponse.data || []) as TransactionLine[]);
     setCategories(categoriesResponse.data || []);
 
     setIsLoading(false);
