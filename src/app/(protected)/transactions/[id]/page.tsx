@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase, type Tables } from "@/lib/supabase";
+import { CategoryPicker } from "@/components/transaction/CategoryPicker";
 
 type Account = Tables<"accounts">;
 type Category = Tables<"categories">;
@@ -647,9 +648,16 @@ export default function TransactionDetailPage({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">内訳</label>
-                  <span className="text-sm text-muted-foreground">
-                    合計: ¥{editTotal.toLocaleString()}
-                  </span>
+                  <div className="text-sm text-right">
+                    <span className="text-muted-foreground">
+                      合計: ¥{editTotal.toLocaleString()}
+                    </span>
+                    {transaction && editTotal !== transaction.total_amount && (
+                      <span className={`ml-2 ${editTotal > transaction.total_amount ? "text-expense" : "text-income"}`}>
+                        (残り: ¥{(transaction.total_amount - editTotal).toLocaleString()})
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {editLines.map((line, index) => (
@@ -685,27 +693,18 @@ export default function TransactionDetailPage({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs text-muted-foreground">カテゴリ</label>
-                        <Select
-                          value={line.category_id}
-                          onValueChange={(v) => {
+                        <CategoryPicker
+                          categories={categories}
+                          selectedId={line.category_id}
+                          onSelect={(v) => {
                             const cat = categories.find((c) => c.id === v);
                             handleUpdateLine(index, {
                               category_id: v,
                               category: cat ? { id: cat.id, name: cat.name } : null,
                             });
                           }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((cat) => (
-                              <SelectItem key={cat.id} value={cat.id}>
-                                {cat.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          type={line.line_type === "income" ? "income" : "expense"}
+                        />
                       </div>
                       <div>
                         <label className="text-xs text-muted-foreground">金額</label>
