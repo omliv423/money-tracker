@@ -565,7 +565,7 @@ function TransactionsContent() {
                                       href={`/transactions/${tx.id}`}
                                       className="flex-1 p-4"
                                     >
-                                      <div className="flex justify-between items-start">
+                                      <div className="flex justify-between items-center">
                                         <div className="space-y-1">
                                           <p className="font-medium">{tx.description}</p>
                                           <p className="text-xs text-muted-foreground">
@@ -580,23 +580,25 @@ function TransactionsContent() {
                                         </div>
                                       </div>
                                     </Link>
-                                    <button
-                                      onClick={() => handleToggleShared(tx.id, tx.is_shared)}
-                                      className={`p-4 transition-colors ${
-                                        tx.is_shared
-                                          ? "text-primary hover:text-primary/80"
-                                          : "text-muted-foreground/40 hover:text-muted-foreground"
-                                      }`}
-                                      title={tx.is_shared ? "共有中" : "個人"}
-                                    >
-                                      <Users className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => setDeleteId(tx.id)}
-                                      className="p-4 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
+                                    <div className="flex items-center self-stretch">
+                                      <button
+                                        onClick={() => handleToggleShared(tx.id, tx.is_shared)}
+                                        className={`px-2 self-stretch flex items-center transition-colors ${
+                                          tx.is_shared
+                                            ? "text-primary hover:text-primary/80"
+                                            : "text-muted-foreground/40 hover:text-muted-foreground"
+                                        }`}
+                                        title={tx.is_shared ? "共有中" : "個人"}
+                                      >
+                                        <Users className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => setDeleteId(tx.id)}
+                                        className="px-3 self-stretch flex items-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
                                   </div>
                                 </motion.div>
                               );
