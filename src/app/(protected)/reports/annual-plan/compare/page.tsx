@@ -62,8 +62,8 @@ function CompareContent() {
     setIsLoading(true);
 
     const targetDate = new Date(fiscalYear, selectedMonth - 1, 1);
-    const monthStart = format(startOfMonth(targetDate), "yyyy-MM-dd");
-    const monthEnd = format(endOfMonth(targetDate), "yyyy-MM-dd");
+    const monthStart = startOfMonth(targetDate);
+    const monthEnd = endOfMonth(targetDate);
 
     const [budgetResponse, linesResponse, categoriesResponse] =
       await Promise.all([
@@ -79,12 +79,11 @@ function CompareContent() {
           amount,
           line_type,
           category_id,
-          transaction:transactions!inner(date, description)
+          transaction:transactions(date, description)
         `
           )
           .in("line_type", ["income", "expense"])
-          .gte("transaction.date", monthStart)
-          .lte("transaction.date", monthEnd),
+          .range(0, 9999),
         supabase
           .from("categories")
           .select("*")
@@ -93,8 +92,23 @@ function CompareContent() {
           .order("name"),
       ]);
 
+    if (budgetResponse.error) {
+      console.error("Budget query error:", budgetResponse.error);
+    }
+    if (linesResponse.error) {
+      console.error("Lines query error:", linesResponse.error);
+    }
+
     setBudgetItems(budgetResponse.data || []);
-    setTransactionLines((linesResponse.data || []) as TransactionLine[]);
+
+    // Filter transaction lines by date client-side (matching PL page approach)
+    const allLines = (linesResponse.data || []) as TransactionLine[];
+    const filtered = allLines.filter((line) => {
+      if (!line.transaction?.date) return false;
+      const txDate = parseISO(line.transaction.date);
+      return txDate >= monthStart && txDate <= monthEnd;
+    });
+    setTransactionLines(filtered);
     setCategories(categoriesResponse.data || []);
 
     setIsLoading(false);
