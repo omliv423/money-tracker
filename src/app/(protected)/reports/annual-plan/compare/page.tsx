@@ -119,15 +119,25 @@ function CompareContent() {
     });
   };
 
+  // 親カテゴリ + その子カテゴリのID一覧を取得
+  const getCategoryIds = (parentId: string): string[] => {
+    const childIds = categories
+      .filter((c) => c.parent_id === parentId)
+      .map((c) => c.id);
+    return [parentId, ...childIds];
+  };
+
   const getActualByCategory = (categoryId: string): number => {
+    const ids = getCategoryIds(categoryId);
     return transactionLines
-      .filter((line) => line.category_id === categoryId)
+      .filter((line) => line.category_id && ids.includes(line.category_id))
       .reduce((sum, line) => sum + line.amount, 0);
   };
 
   const getLinesByCategory = (categoryId: string): TransactionLine[] => {
+    const ids = getCategoryIds(categoryId);
     return transactionLines
-      .filter((line) => line.category_id === categoryId)
+      .filter((line) => line.category_id && ids.includes(line.category_id))
       .sort((a, b) => {
         const dateA = a.transaction?.date || "";
         const dateB = b.transaction?.date || "";
