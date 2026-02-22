@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   TrendingUp,
   TrendingDown,
   Wallet,
@@ -40,19 +39,6 @@ interface CompareData {
   diff: number;
   percentage: number;
 }
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 12 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: {
-      delay: i * 0.06,
-      duration: 0.4,
-      ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
-    },
-  }),
-};
 
 function CompareContent() {
   const router = useRouter();
@@ -107,7 +93,6 @@ function CompareContent() {
 
     setBudgetItems(budgetResponse.data || []);
 
-    // 月でフィルタリング
     const filteredLines = (linesResponse.data || []).filter((line: any) => {
       const txDate = line.transaction?.date;
       return txDate && txDate >= monthStart && txDate <= monthEnd;
@@ -134,14 +119,12 @@ function CompareContent() {
     });
   };
 
-  // カテゴリ別に実績を集計
   const getActualByCategory = (categoryId: string): number => {
     return transactionLines
       .filter((line) => line.category_id === categoryId)
       .reduce((sum, line) => sum + line.amount, 0);
   };
 
-  // カテゴリ別の取引明細を取得（日付降順）
   const getLinesByCategory = (categoryId: string): TransactionLine[] => {
     return transactionLines
       .filter((line) => line.category_id === categoryId)
@@ -152,7 +135,6 @@ function CompareContent() {
       });
   };
 
-  // 比較データを生成
   const incomeData: CompareData[] = useMemo(() => {
     const incomeCats = categories.filter(
       (c) => c.type === "income" && c.parent_id === null
@@ -234,11 +216,156 @@ function CompareContent() {
     );
   }
 
-  const renderCompareCards = (
+  // 参考アプリ風：行レイアウト（アイコン | 予算・支出 | 残り | >）
+  const renderBudgetRow = (
+    item: CompareData,
+    isExpense: boolean,
+    icon: React.ReactNode,
+    label: string,
+    isLast: boolean
+  ) => {
+    const remaining = item.planned - item.actual;
+    const barWidth = item.planned > 0 ? Math.min(item.percentage, 100) : 0;
+    const isOver = isExpense ? item.percentage > 100 : item.percentage < 100;
+    const isExpanded = expandedCards.has(item.categoryId);
+    const lines = isExpanded ? getLinesByCategory(item.categoryId) : [];
+
+    return (
+      <div key={item.categoryId}>
+        <button
+          type="button"
+          className={`w-full text-left active:bg-muted/60 transition-colors ${!isLast && !isExpanded ? "border-b border-border" : ""}`}
+          onClick={() => toggleCard(item.categoryId)}
+        >
+          <div className="flex items-center gap-3 px-4 py-4">
+            {/* 左: アイコン + カテゴリ名 */}
+            <div className="flex flex-col items-center w-12 shrink-0">
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-full"
+                style={{
+                  background: isExpense
+                    ? "oklch(0.55 0.18 25 / 10%)"
+                    : "oklch(0.6 0.15 160 / 10%)",
+                }}
+              >
+                {icon}
+              </div>
+              <span className="mt-1 text-[10px] leading-tight text-muted-foreground text-center line-clamp-2">
+                {label}
+              </span>
+            </div>
+
+            {/* 中央: 予算・支出 + プログレスバー */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline justify-between">
+                <div>
+                  <span className="text-xs text-muted-foreground">予算 </span>
+                  <span className="tabular-nums text-xs text-muted-foreground">
+                    ¥{item.planned.toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-muted-foreground">残り</span>
+                </div>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <div>
+                  <span className="text-xs text-muted-foreground">支出 </span>
+                  <span className="tabular-nums text-xl font-bold tracking-tight">
+                    ¥{item.actual.toLocaleString()}
+                  </span>
+                </div>
+                <span
+                  className={`tabular-nums text-xl font-bold tracking-tight ${remaining < 0 ? "text-expense" : ""}`}
+                >
+                  {remaining < 0 ? "-" : ""}¥
+                  {Math.abs(remaining).toLocaleString()}
+                </span>
+              </div>
+              {/* プログレスバー */}
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${barWidth}%` }}
+                  transition={{ duration: 0.6, ease: "easeOut", delay: 0.15 }}
+                  className="h-full rounded-full"
+                  style={{
+                    background:
+                      barWidth > 0
+                        ? isOver
+                          ? "var(--expense)"
+                          : "var(--income)"
+                        : "transparent",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 右: シェブロン */}
+            <motion.div
+              animate={{ rotate: isExpanded ? 90 : 0 }}
+              transition={{ duration: 0.15 }}
+              className="shrink-0 ml-1"
+            >
+              <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+            </motion.div>
+          </div>
+        </button>
+
+        {/* 展開時の明細 */}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="overflow-hidden"
+            >
+              <div
+                className={`bg-muted/30 pl-[4.5rem] pr-4 py-1 ${!isLast ? "border-b border-border" : ""}`}
+              >
+                {lines.length === 0 ? (
+                  <p className="py-3 text-center text-xs text-muted-foreground">
+                    取引がありません
+                  </p>
+                ) : (
+                  lines.map((line, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex items-center justify-between py-2 ${idx !== lines.length - 1 ? "border-b border-border/40" : ""}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="tabular-nums text-xs text-muted-foreground shrink-0 w-8">
+                          {line.transaction?.date
+                            ? format(parseISO(line.transaction.date), "M/d", {
+                                locale: ja,
+                              })
+                            : "-"}
+                        </span>
+                        <span className="truncate text-sm text-foreground/70">
+                          {line.transaction?.description || "（メモなし）"}
+                        </span>
+                      </div>
+                      <span className="tabular-nums text-sm font-medium shrink-0 ml-3">
+                        ¥{line.amount.toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+  const renderSection = (
     type: "income" | "expense",
     data: CompareData[],
     totals: { planned: number; actual: number },
-    icon: React.ReactNode,
+    sectionIcon: React.ReactNode,
     title: string
   ) => {
     const isExpense = type === "expense";
@@ -246,270 +373,99 @@ function CompareContent() {
       totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
     const remaining = totals.planned - totals.actual;
     const barWidth = Math.min(totalPercentage, 100);
-
-    // テーマカラーに合わせた判定
-    const isOverBudget = isExpense
-      ? totalPercentage > 100
-      : totalPercentage < 100;
+    const isOver = isExpense ? totalPercentage > 100 : totalPercentage < 100;
 
     return (
-      <div className="space-y-2.5">
-        {/* セクションサマリーカード */}
-        <motion.div
-          variants={cardVariants}
-          initial="hidden"
-          animate="visible"
-          custom={0}
-          className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-soft"
-        >
-          {/* 背景アクセント */}
-          <div
-            className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full opacity-[0.07]"
-            style={{
-              background: isExpense
-                ? "var(--expense)"
-                : "var(--income)",
-            }}
-          />
-
-          <div className="relative">
-            <div className="mb-4 flex items-center gap-2.5">
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded-lg"
-                style={{
-                  background: isExpense
-                    ? "oklch(0.55 0.18 25 / 12%)"
-                    : "oklch(0.6 0.15 160 / 12%)",
-                }}
-              >
-                {icon}
-              </div>
-              <h2 className="font-heading text-base font-semibold tracking-tight">
-                {title}
-              </h2>
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        {/* 全体サマリー行 */}
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
+          <div className="flex flex-col items-center w-12 shrink-0">
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-full"
+              style={{
+                background: isExpense
+                  ? "oklch(0.55 0.18 25 / 12%)"
+                  : "oklch(0.6 0.15 160 / 12%)",
+              }}
+            >
+              <Wallet
+                className={`h-5 w-5 ${isExpense ? "text-expense" : "text-income"}`}
+              />
             </div>
-
-            <div className="mb-4 flex items-end justify-between">
-              <div className="space-y-1">
-                <p className="text-xs tracking-wide text-muted-foreground">
-                  予算
-                </p>
-                <p className="tabular-nums text-sm text-muted-foreground">
+            <span className="mt-1 text-[10px] font-medium text-muted-foreground">
+              全体
+            </span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <span className="text-xs text-muted-foreground">予算 </span>
+                <span className="tabular-nums text-xs text-muted-foreground">
                   ¥{totals.planned.toLocaleString()}
-                </p>
+                </span>
               </div>
-              <div className="text-center">
-                <p className="text-xs tracking-wide text-muted-foreground">
-                  {isExpense ? "支出" : "収入"}
-                </p>
-                <p
+              <span className="text-xs text-muted-foreground">残り</span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  {isExpense ? "支出" : "収入"}{" "}
+                </span>
+                <span
                   className={`tabular-nums text-xl font-bold tracking-tight ${isExpense ? "text-expense" : "text-income"}`}
                 >
                   ¥{totals.actual.toLocaleString()}
-                </p>
+                </span>
               </div>
-              <div className="text-right">
-                <p className="text-xs tracking-wide text-muted-foreground">
-                  残り
-                </p>
-                <p
-                  className={`tabular-nums text-sm font-semibold ${remaining < 0 ? "text-expense" : ""}`}
-                >
-                  {remaining < 0 ? "-" : ""}¥
-                  {Math.abs(remaining).toLocaleString()}
-                </p>
-              </div>
+              <span
+                className={`tabular-nums text-xl font-bold tracking-tight ${remaining < 0 ? "text-expense" : ""}`}
+              >
+                {remaining < 0 ? "-" : ""}¥
+                {Math.abs(remaining).toLocaleString()}
+              </span>
             </div>
-
-            {/* プログレスバー */}
-            <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${barWidth}%` }}
-                transition={{
-                  duration: 0.8,
-                  ease: [0.16, 1, 0.3, 1],
-                  delay: 0.2,
-                }}
-                className="absolute inset-y-0 left-0 rounded-full"
+                transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
+                className="h-full rounded-full"
                 style={{
-                  background: isOverBudget
-                    ? "var(--expense)"
-                    : "var(--income)",
+                  background: isOver ? "var(--expense)" : "var(--income)",
                 }}
               />
             </div>
-            <div className="mt-1.5 flex items-center justify-between">
-              <span
-                className={`tabular-nums text-xs font-semibold ${isOverBudget ? "text-expense" : "text-income"}`}
-              >
-                {totalPercentage.toFixed(0)}%
-              </span>
-              {isExpense && totalPercentage > 100 && (
-                <span className="text-xs font-medium text-expense">
-                  超過
-                </span>
-              )}
-            </div>
           </div>
-        </motion.div>
+        </div>
 
-        {/* カテゴリ別カード */}
+        {/* セクションラベル */}
+        <div className="bg-muted/40 px-4 py-2 border-b border-border">
+          <span className="text-xs font-medium text-muted-foreground">
+            カテゴリー別{title}
+          </span>
+        </div>
+
+        {/* カテゴリ行リスト */}
         {data.length === 0 ? (
-          <motion.div
-            variants={cardVariants}
-            initial="hidden"
-            animate="visible"
-            custom={1}
-            className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground"
-          >
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
             データがありません
-          </motion.div>
+          </div>
         ) : (
           data.map((item, index) => {
-            const itemRemaining = item.planned - item.actual;
-            const itemBarWidth = Math.min(item.percentage, 100);
-            const isItemOver = isExpense
-              ? item.percentage > 100
-              : item.percentage < 100;
-            const isExpanded = expandedCards.has(item.categoryId);
-            const lines = isExpanded
-              ? getLinesByCategory(item.categoryId)
-              : [];
-
-            return (
-              <motion.div
-                key={item.categoryId}
-                variants={cardVariants}
-                initial="hidden"
-                animate="visible"
-                custom={index + 1}
-                className="overflow-hidden rounded-2xl border border-border bg-card shadow-soft transition-shadow duration-200 hover:shadow-[0_2px_8px_oklch(0.2_0.01_60/10%)]"
+            const firstChar = item.categoryName.charAt(0);
+            const icon = (
+              <span
+                className={`text-sm font-bold ${isExpense ? "text-expense" : "text-income"}`}
               >
-                <button
-                  type="button"
-                  className="w-full px-4 py-3.5 text-left active:bg-accent/40 transition-colors"
-                  onClick={() => toggleCard(item.categoryId)}
-                >
-                  {/* ヘッダー行: カテゴリ名 + シェブロン */}
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold tracking-tight">
-                      {item.categoryName}
-                    </span>
-                    <motion.div
-                      animate={{ rotate: isExpanded ? 180 : 0 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <ChevronDown className="h-4 w-4 text-muted-foreground/60" />
-                    </motion.div>
-                  </div>
-
-                  {/* 金額行 */}
-                  <div className="mb-2.5 flex items-end justify-between">
-                    <div>
-                      <p className="tabular-nums text-[11px] text-muted-foreground">
-                        予算 ¥{item.planned.toLocaleString()}
-                      </p>
-                      <p
-                        className={`tabular-nums text-lg font-bold tracking-tight ${isExpense ? "text-expense" : "text-income"}`}
-                      >
-                        ¥{item.actual.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[11px] text-muted-foreground">
-                        残り
-                      </p>
-                      <p
-                        className={`tabular-nums text-sm font-semibold ${itemRemaining < 0 ? "text-expense" : ""}`}
-                      >
-                        {itemRemaining < 0 ? "-" : ""}¥
-                        {Math.abs(itemRemaining).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* プログレスバー */}
-                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${item.planned > 0 ? itemBarWidth : 0}%`,
-                      }}
-                      transition={{
-                        duration: 0.6,
-                        ease: [0.16, 1, 0.3, 1],
-                        delay: 0.1 + index * 0.05,
-                      }}
-                      className="absolute inset-y-0 left-0 rounded-full"
-                      style={{
-                        background:
-                          item.planned > 0
-                            ? isItemOver
-                              ? "var(--expense)"
-                              : "var(--income)"
-                            : "transparent",
-                      }}
-                    />
-                  </div>
-                  <div className="mt-1 text-right">
-                    <span
-                      className={`tabular-nums text-[11px] font-semibold ${isItemOver ? "text-expense" : "text-income"}`}
-                    >
-                      {item.planned > 0
-                        ? `${item.percentage.toFixed(0)}%`
-                        : "-"}
-                    </span>
-                  </div>
-                </button>
-
-                {/* 展開時の明細リスト */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                      className="overflow-hidden"
-                    >
-                      <div className="border-t border-border bg-muted/30 px-4 py-2">
-                        {lines.length === 0 ? (
-                          <p className="py-3 text-center text-xs text-muted-foreground">
-                            取引がありません
-                          </p>
-                        ) : (
-                          lines.map((line, idx) => (
-                            <div
-                              key={idx}
-                              className={`flex items-center justify-between py-2 ${idx !== lines.length - 1 ? "border-b border-border/50" : ""}`}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <span className="tabular-nums text-[11px] text-muted-foreground shrink-0 w-8">
-                                  {line.transaction?.date
-                                    ? format(
-                                        parseISO(line.transaction.date),
-                                        "M/d",
-                                        { locale: ja }
-                                      )
-                                    : "-"}
-                                </span>
-                                <span className="truncate text-sm text-foreground/70">
-                                  {line.transaction?.description ||
-                                    "（メモなし）"}
-                                </span>
-                              </div>
-                              <span className="tabular-nums text-sm font-medium shrink-0 ml-3">
-                                ¥{line.amount.toLocaleString()}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+                {firstChar}
+              </span>
+            );
+            return renderBudgetRow(
+              item,
+              isExpense,
+              icon,
+              item.categoryName,
+              index === data.length - 1
             );
           })
         )}
@@ -519,14 +475,9 @@ function CompareContent() {
 
   return (
     <MainLayout>
-      <div className="space-y-6 pb-4">
+      <div className="space-y-5 pb-4">
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="flex items-center justify-between"
-        >
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.back()}
@@ -538,7 +489,7 @@ function CompareContent() {
               計画 vs 実績
             </h1>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
@@ -559,92 +510,23 @@ function CompareContent() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-        </motion.div>
-
-        {/* トップサマリー 3カード */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {[
-            {
-              label: "収入",
-              planned: incomeTotals.planned,
-              actual: incomeTotals.actual,
-              colorClass: "text-income",
-              accent: "oklch(0.6 0.15 160 / 10%)",
-            },
-            {
-              label: "支出",
-              planned: expenseTotals.planned,
-              actual: expenseTotals.actual,
-              colorClass: "text-expense",
-              accent: "oklch(0.55 0.18 25 / 10%)",
-            },
-            {
-              label: "収支",
-              planned: netPlanned,
-              actual: netActual,
-              colorClass: netActual >= 0 ? "text-income" : "text-expense",
-              accent:
-                netActual >= 0
-                  ? "oklch(0.6 0.15 160 / 10%)"
-                  : "oklch(0.55 0.18 25 / 10%)",
-            },
-          ].map((card, i) => (
-            <motion.div
-              key={card.label}
-              variants={cardVariants}
-              initial="hidden"
-              animate="visible"
-              custom={i}
-              className="relative overflow-hidden rounded-2xl border border-border bg-card p-3.5 shadow-soft"
-            >
-              <div
-                className="pointer-events-none absolute -right-4 -top-4 h-16 w-16 rounded-full"
-                style={{ background: card.accent }}
-              />
-              <p className="relative mb-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-                {card.label}
-              </p>
-              <div className="relative space-y-1">
-                <div>
-                  <span className="text-[10px] text-muted-foreground">
-                    計画
-                  </span>
-                  <p className="tabular-nums text-xs text-muted-foreground">
-                    {card.label === "収支" && card.planned >= 0 ? "+" : ""}
-                    ¥{card.planned.toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] text-muted-foreground">
-                    実績
-                  </span>
-                  <p
-                    className={`tabular-nums text-base font-bold tracking-tight ${card.colorClass}`}
-                  >
-                    {card.label === "収支" && card.actual >= 0 ? "+" : ""}¥
-                    {card.actual.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          ))}
         </div>
 
-        {/* 収入比較 */}
-        {renderCompareCards(
+        {/* 収入セクション */}
+        {renderSection(
           "income",
           incomeData,
           incomeTotals,
-          <TrendingUp className="h-4 w-4 text-income" />,
+          <TrendingUp className="h-5 w-5 text-income" />,
           "収入"
         )}
 
-        {/* 支出比較 */}
-        {renderCompareCards(
+        {/* 支出セクション */}
+        {renderSection(
           "expense",
           expenseData,
           expenseTotals,
-          <TrendingDown className="h-4 w-4 text-expense" />,
+          <TrendingDown className="h-5 w-5 text-expense" />,
           "支出"
         )}
       </div>
