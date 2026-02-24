@@ -338,7 +338,6 @@ export function TransactionForm() {
       });
 
       // 立替えてもらった場合は、借入（liability）ラインを追加
-      let liabilityLineId: string | null = null;
       const paidByCounterpartyName = getPaidByCounterpartyName();
       if (paidByOther && paidByCounterpartyName) {
         // 新しい相手先の場合はDBに追加
@@ -367,111 +366,6 @@ export function TransactionForm() {
         .select();
 
       if (linesError) throw linesError;
-
-      // 立替えてもらった場合の自動相殺処理
-      if (paidByOther && paidByCounterpartyName && insertedLines) {
-        const counterpartyName = paidByCounterpartyName;
-        // 新しく作成したliabilityラインのIDを取得
-        const newLiabilityLine = insertedLines.find(
-          (l: any) => l.line_type === "liability" && l.counterparty === counterpartyName
-        );
-        liabilityLineId = newLiabilityLine?.id || null;
-
-        // 同じ相手への未精算の立替（asset）を検索
-        const { data: existingAssets } = await supabase
-          .from("transaction_lines")
-          .select("id, amount, settled_amount, is_settled")
-          .eq("counterparty", counterpartyName)
-          .eq("line_type", "asset")
-          .order("created_at", { ascending: true });
-
-        if (existingAssets && existingAssets.length > 0) {
-          // 未精算の立替合計を計算
-          let totalUnsettledAssets = 0;
-          const unsettledAssetLines: { id: string; unsettledAmount: number }[] = [];
-
-          for (const asset of existingAssets) {
-            const settledAmount = asset.settled_amount ?? 0;
-            const unsettledAmount = asset.is_settled && settledAmount === 0
-              ? 0 // 旧ロジックで精算済み
-              : asset.amount - settledAmount;
-            if (unsettledAmount > 0) {
-              totalUnsettledAssets += unsettledAmount;
-              unsettledAssetLines.push({ id: asset.id, unsettledAmount });
-            }
-          }
-
-          // 相殺可能額を計算（新規借入と未精算立替の小さい方）
-          const offsetAmount = Math.min(totalAmount, totalUnsettledAssets);
-
-          if (offsetAmount > 0) {
-            // 精算レコードを作成（相殺）
-            const { data: newSettlement } = await supabase
-              .from("settlements")
-              .insert({
-                user_id: user?.id,
-                date: accrualDate,
-                counterparty: counterpartyName,
-                amount: 0, // 相殺なので実際の金銭移動は0
-                note: `自動相殺: ${description}`,
-              })
-              .select()
-              .single();
-
-            if (newSettlement) {
-              const settlementItems: { settlement_id: string; transaction_line_id: string; amount: number }[] = [];
-              let remainingOffset = offsetAmount;
-
-              // 立替（asset）を精算
-              for (const asset of unsettledAssetLines) {
-                if (remainingOffset <= 0) break;
-                const toSettle = Math.min(remainingOffset, asset.unsettledAmount);
-
-                // settled_amountを更新
-                const currentAsset = existingAssets.find(a => a.id === asset.id);
-                const currentSettled = currentAsset?.settled_amount ?? 0;
-                await supabase
-                  .from("transaction_lines")
-                  .update({
-                    settled_amount: currentSettled + toSettle,
-                    is_settled: (currentSettled + toSettle) >= (currentAsset?.amount ?? 0),
-                  })
-                  .eq("id", asset.id);
-
-                settlementItems.push({
-                  settlement_id: newSettlement.id,
-                  transaction_line_id: asset.id,
-                  amount: toSettle,
-                });
-
-                remainingOffset -= toSettle;
-              }
-
-              // 新規借入（liability）も精算扱いにする
-              if (liabilityLineId) {
-                await supabase
-                  .from("transaction_lines")
-                  .update({
-                    settled_amount: offsetAmount,
-                    is_settled: offsetAmount >= totalAmount,
-                  })
-                  .eq("id", liabilityLineId);
-
-                settlementItems.push({
-                  settlement_id: newSettlement.id,
-                  transaction_line_id: liabilityLineId,
-                  amount: offsetAmount,
-                });
-              }
-
-              // settlement_itemsを保存
-              if (settlementItems.length > 0) {
-                await (supabase as any).from("settlement_items").insert(settlementItems);
-              }
-            }
-          }
-        }
-      }
 
       // Reset form
       setTotalAmount(0);

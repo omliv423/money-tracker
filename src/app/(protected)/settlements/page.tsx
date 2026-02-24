@@ -966,7 +966,7 @@ export default function SettlementsPage() {
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: 30, opacity: 0 }}
                   transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                  className="fixed bottom-20 left-0 right-0 z-50 md:bottom-4"
+                  className="fixed bottom-28 left-0 right-0 z-50 md:bottom-4"
                 >
                   <div className="mx-auto max-w-lg px-4">
                     <div className="bg-card/80 backdrop-blur-xl border border-border/70 rounded-2xl p-4 shadow-2xl">
