@@ -106,6 +106,7 @@ export default function AccountsSettingsPage() {
     const { data } = await supabase
       .from("accounts")
       .select("*")
+      .eq("user_id", user?.id ?? "")
       .order("name");
 
     if (data) {
@@ -233,7 +234,8 @@ export default function AccountsSettingsPage() {
         partner_name: editIsShared && editPartnerType === "manual" && editPartnerName ? editPartnerName : null,
         default_split_ratio: editIsShared ? parseInt(editSplitRatio) || 50 : 50,
       })
-      .eq("id", editAccount.id);
+      .eq("id", editAccount.id)
+      .eq("user_id", user?.id ?? "");
 
     setEditAccount(null);
     setIsSaving(false);
@@ -244,14 +246,15 @@ export default function AccountsSettingsPage() {
     await supabase
       .from("accounts")
       .update({ is_active: !account.is_active })
-      .eq("id", account.id);
+      .eq("id", account.id)
+      .eq("user_id", user?.id ?? "");
     fetchAccounts();
   };
 
   const handleDelete = async () => {
     if (!deleteId) return;
 
-    await supabase.from("accounts").delete().eq("id", deleteId);
+    await supabase.from("accounts").delete().eq("id", deleteId).eq("user_id", user?.id ?? "");
     setDeleteId(null);
     fetchAccounts();
   };

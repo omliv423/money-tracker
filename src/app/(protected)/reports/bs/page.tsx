@@ -340,7 +340,8 @@ export default function BSReportPage() {
             category:categories(id, name)
           )
         `)
-        .eq("is_cash_settled", false);
+        .eq("is_cash_settled", false)
+        .eq("user_id", user?.id ?? "");
 
       // Aggregate by account
       const accountPayableMap = new Map<string, AccountPayable>();
@@ -454,8 +455,9 @@ export default function BSReportPage() {
       // Fetch unsettled receivables/liabilities (立替・借入) - 部分精算対応
       const { data: lines } = await supabase
         .from("transaction_lines")
-        .select("amount, line_type, counterparty, is_settled, settled_amount")
-        .not("counterparty", "is", null);
+        .select("amount, line_type, counterparty, is_settled, settled_amount, transaction:transactions!inner(user_id)")
+        .not("counterparty", "is", null)
+        .eq("transactions.user_id", user?.id ?? "");
 
       const receivableMap = new Map<string, number>();
       const liabilityMap = new Map<string, number>();

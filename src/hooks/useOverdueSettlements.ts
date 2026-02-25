@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 interface OverdueTransaction {
   id: string;
@@ -23,6 +24,7 @@ interface UseOverdueSettlementsReturn {
 }
 
 export function useOverdueSettlements(): UseOverdueSettlementsReturn {
+  const { user } = useAuth();
   const [overdueTransactions, setOverdueTransactions] = useState<OverdueTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -40,6 +42,7 @@ export function useOverdueSettlements(): UseOverdueSettlementsReturn {
         settled_amount,
         account:accounts!transactions_account_id_fkey(name)
       `)
+      .eq("user_id", user?.id ?? "")
       .eq("is_cash_settled", false)
       .not("payment_date", "is", null)
       .lt("payment_date", today)
@@ -75,7 +78,7 @@ export function useOverdueSettlements(): UseOverdueSettlementsReturn {
 
   useEffect(() => {
     fetchOverdue();
-  }, []);
+  }, [user?.id]);
 
   const overdueCount = overdueTransactions.length;
   const totalOverdueAmount = overdueTransactions.reduce(

@@ -7,6 +7,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { TrendingUp, TrendingDown, Scale, ArrowRight, Calendar } from "lucide-react";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 const reportCards = [
   {
@@ -40,6 +41,7 @@ const reportCards = [
 ];
 
 export default function ReportsPage() {
+  const { user } = useAuth();
   const [monthlyIncome, setMonthlyIncome] = useState(0);
   const [monthlyExpense, setMonthlyExpense] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,6 +60,7 @@ export default function ReportsPage() {
           date,
           transaction_lines(amount, line_type, category:categories(type))
         `)
+        .eq("user_id", user?.id ?? "")
         .gte("date", monthStart)
         .lte("date", monthEnd);
 
@@ -83,7 +86,7 @@ export default function ReportsPage() {
     }
 
     fetchMonthlyData();
-  }, []);
+  }, [user?.id]);
 
   return (
     <MainLayout>

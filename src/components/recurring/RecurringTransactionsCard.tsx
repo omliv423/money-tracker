@@ -41,13 +41,14 @@ export function RecurringTransactionsCard({ embedded = false }: RecurringTransac
   const fetchData = async () => {
     setIsLoading(true);
 
-    // Fetch active recurring transactions
+    // Fetch active recurring transactions for current user only
     const { data: recurringData } = await supabase
       .from("recurring_transactions")
       .select(`
         id, name, description, account_id, total_amount, day_of_month, payment_delay_days,
         recurring_transaction_lines(amount, category_id, line_type, counterparty)
       `)
+      .eq("user_id", user?.id ?? "")
       .eq("is_active", true)
       .order("day_of_month");
 

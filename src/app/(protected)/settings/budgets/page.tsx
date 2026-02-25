@@ -42,7 +42,7 @@ export default function BudgetsPage() {
       .order("name");
 
     // Fetch budgets
-    const { data: budgets } = await supabase.from("budgets").select("*");
+    const { data: budgets } = await supabase.from("budgets").select("*").eq("user_id", user?.id ?? "");
 
     // Fetch current month's spending
     const now = new Date();
@@ -55,9 +55,10 @@ export default function BudgetsPage() {
         amount,
         category_id,
         line_type,
-        transaction:transactions(date)
+        transaction:transactions!inner(user_id, date)
       `)
-      .eq("line_type", "expense");
+      .eq("line_type", "expense")
+      .eq("transactions.user_id", user?.id ?? "");
 
     // Calculate spending per category
     const spendingMap = new Map<string, number>();

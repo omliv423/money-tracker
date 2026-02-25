@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 import Link from "next/link";
 
 type RecurringTransaction = {
@@ -33,6 +34,7 @@ type RecurringTransaction = {
 
 export default function RecurringTransactionsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [items, setItems] = useState<RecurringTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -46,6 +48,7 @@ export default function RecurringTransactionsPage() {
         day_of_month, payment_delay_days, is_active,
         account:accounts(name)
       `)
+      .eq("user_id", user?.id ?? "")
       .order("day_of_month", { ascending: true });
 
     if (data) {
@@ -56,7 +59,7 @@ export default function RecurringTransactionsPage() {
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [user?.id]);
 
   const handleToggleActive = async (item: RecurringTransaction) => {
     await supabase
