@@ -147,7 +147,7 @@ enabled = true
 # in emails.
 site_url = "http://localhost:3002"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://localhost:3002", "http://localhost:3002/auth/callback"]
+additional_redirect_urls = ["http://localhost:3002", "http://localhost:3002/auth/callback", "http://192.168.151.62:3002", "http://192.168.151.62:3002/auth/callback"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
@@ -298,9 +298,9 @@ max_frequency = "5s"
 # `twitter`, `slack`, `spotify`, `workos`, `zoom`.
 [auth.external.google]
 enabled = true
-client_id = "env(GOOGLE_CLIENT_ID)"
+client_id = "616632282889-33tcfqtepkurbuv15qrn95rmhtkr4p23.apps.googleusercontent.com"
 secret = "env(GOOGLE_CLIENT_SECRET)"
-redirect_uri = ""
+redirect_uri = "http://localhost:54321/auth/v1/callback"
 url = ""
 skip_nonce_check = true
 

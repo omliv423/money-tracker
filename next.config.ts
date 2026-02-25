@@ -3,7 +3,7 @@ import withPWA from "@ducanh2912/next-pwa";
 
 const nextConfig: NextConfig = {
   turbopack: {},
-  allowedDevOrigins: ["192.168.10.75"],
+  allowedDevOrigins: ["192.168.151.62"],
   async headers() {
     return [
       {

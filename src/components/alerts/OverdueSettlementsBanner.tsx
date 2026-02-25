@@ -19,7 +19,7 @@ export function OverdueSettlementsBanner() {
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3"
+      className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4"
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
