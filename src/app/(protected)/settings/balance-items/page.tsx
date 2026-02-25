@@ -123,6 +123,7 @@ export default function BalanceItemsPage() {
     const { data } = await supabase
       .from("balance_items")
       .select("*")
+      .eq("user_id", user?.id ?? "")
       .order("item_type")
       .order("name");
 
@@ -134,6 +135,7 @@ export default function BalanceItemsPage() {
     const { data: accounts } = await supabase
       .from("accounts")
       .select("*")
+      .eq("user_id", user?.id ?? "")
       .eq("is_active", true);
 
     if (accounts) {
@@ -156,6 +158,7 @@ export default function BalanceItemsPage() {
         account:accounts!transactions_account_id_fkey(id, name),
         transaction_lines(amount, line_type)
       `)
+      .eq("user_id", user?.id ?? "")
       .eq("is_cash_settled", false);
 
     const payableMap = new Map<string, PayableBalance>();
@@ -191,7 +194,8 @@ export default function BalanceItemsPage() {
     // Fetch unsettled receivables/liabilities (立替金・借入金)
     const { data: lines } = await supabase
       .from("transaction_lines")
-      .select("amount, line_type, counterparty, is_settled, settled_amount")
+      .select("amount, line_type, counterparty, is_settled, settled_amount, transaction:transactions!inner(user_id)")
+      .eq("transactions.user_id", user?.id ?? "")
       .not("counterparty", "is", null);
 
     const receivableMap = new Map<string, number>();

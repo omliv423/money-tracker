@@ -71,6 +71,7 @@ export default function QuickEntriesPage() {
           account:accounts(name),
           category:categories(name)
         `)
+        .eq("user_id", user?.id ?? "")
         .order("use_count", { ascending: false }),
       supabase.from("accounts").select("*").eq("is_active", true).order("name"),
       supabase.from("categories").select("*").eq("is_active", true).order("name"),
@@ -84,7 +85,7 @@ export default function QuickEntriesPage() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [user?.id]);
 
   const resetForm = () => {
     setFormName("");

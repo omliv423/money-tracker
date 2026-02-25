@@ -42,6 +42,7 @@ export function QuickEntryButtons({ embedded = false }: QuickEntryButtonsProps) 
         account:accounts(name),
         category:categories(name)
       `)
+      .eq("user_id", user?.id ?? "")
       .eq("is_active", true)
       .order("use_count", { ascending: false })
       .limit(10);
@@ -52,7 +53,7 @@ export function QuickEntryButtons({ embedded = false }: QuickEntryButtonsProps) 
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [user?.id]);
 
   const handleQuickEntryClick = (entry: QuickEntry) => {
     setSelectedEntry(entry);

@@ -6,8 +6,10 @@ import { ArrowLeft, Download, FileSpreadsheet, Loader2, CheckCircle } from "luci
 import { Button } from "@/components/ui/button";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 export default function ExportPage() {
+  const { user } = useAuth();
   const [isExporting, setIsExporting] = useState(false);
   const [exportComplete, setExportComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,12 +43,14 @@ export default function ExportPage() {
             categories(name, type)
           )
         `)
+        .eq("user_id", user?.id ?? "")
         .order("date", { ascending: false });
 
       // Fetch accounts separately to avoid relationship ambiguity
       const { data: accounts } = await supabase
         .from("accounts")
-        .select("id, name");
+        .select("id, name")
+        .eq("user_id", user?.id ?? "");
 
       const accountMap = new Map(accounts?.map(a => [a.id, a.name]) || []);
 
