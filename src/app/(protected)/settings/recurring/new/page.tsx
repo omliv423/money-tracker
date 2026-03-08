@@ -58,7 +58,7 @@ export default function NewRecurringTransactionPage() {
     async function fetchData() {
       setIsLoading(true);
       const [accountsRes, categoriesRes, counterpartiesRes] = await Promise.all([
-        supabase.from("accounts").select("*").eq("is_active", true).order("name"),
+        supabase.from("accounts").select("*").eq("is_active", true).eq("user_id", user?.id ?? "").order("name"),
         supabase.from("categories").select("*").eq("is_active", true).order("name"),
         supabase.from("counterparties").select("*").eq("is_active", true).order("name"),
       ]);

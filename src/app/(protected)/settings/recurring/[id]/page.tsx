@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { CategoryPicker } from "@/components/transaction/CategoryPicker";
 import { supabase, type Tables } from "@/lib/supabase";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 type Account = Tables<"accounts">;
 type Category = Tables<"categories">;
@@ -36,6 +37,7 @@ function generateId() {
 
 export default function EditRecurringTransactionPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const params = useParams();
   const id = params.id as string;
 
@@ -59,7 +61,7 @@ export default function EditRecurringTransactionPage() {
       setIsLoading(true);
 
       const [accountsRes, categoriesRes, counterpartiesRes, recurringRes, linesRes] = await Promise.all([
-        supabase.from("accounts").select("*").eq("is_active", true).order("name"),
+        supabase.from("accounts").select("*").eq("is_active", true).eq("user_id", user?.id ?? "").order("name"),
         supabase.from("categories").select("*").eq("is_active", true).order("name"),
         supabase.from("counterparties").select("*").eq("is_active", true).order("name"),
         supabase.from("recurring_transactions").select("*").eq("id", id).single(),

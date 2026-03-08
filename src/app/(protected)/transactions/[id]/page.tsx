@@ -7,6 +7,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { ArrowLeft, Calendar, CreditCard, Wallet, Tag, Clock, Pencil, Trash2, Plus, X, Check, UserPlus, Users, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -85,6 +86,7 @@ export default function TransactionDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const { user } = useAuth();
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -147,7 +149,7 @@ export default function TransactionDetailPage({
           `)
           .eq("id", id)
           .single(),
-        supabase.from("accounts").select("*").eq("is_active", true).order("name"),
+        supabase.from("accounts").select("*").eq("is_active", true).eq("user_id", user?.id ?? "").order("name"),
         supabase.from("categories").select("*").eq("is_active", true).order("name"),
         supabase.from("counterparties").select("*").eq("is_active", true).order("name"),
       ]);
@@ -173,13 +175,13 @@ export default function TransactionDetailPage({
       if (counterpartiesRes.data) setCounterparties(counterpartiesRes.data);
 
       // Fetch partner info for proxy registration
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
         // Get my household
         const { data: myMembership } = await supabase
           .from("household_members")
           .select("household_id")
-          .eq("user_id", user.id)
+          .eq("user_id", authUser.id)
           .eq("status", "active")
           .maybeSingle();
 
@@ -187,7 +189,7 @@ export default function TransactionDetailPage({
         const { data: ownedHousehold } = await supabase
           .from("households")
           .select("id")
-          .eq("owner_id", user.id)
+          .eq("owner_id", authUser.id)
           .maybeSingle();
 
         const householdId = ownedHousehold?.id || myMembership?.household_id;
@@ -199,7 +201,7 @@ export default function TransactionDetailPage({
             .select("user_id, invited_email")
             .eq("household_id", householdId)
             .eq("status", "active")
-            .neq("user_id", user.id);
+            .neq("user_id", authUser.id);
 
           // Also check household owner if I'm a member (not owner)
           if (!ownedHousehold) {
@@ -208,7 +210,7 @@ export default function TransactionDetailPage({
               .select("owner_id")
               .eq("id", householdId)
               .single();
-            if (household && household.owner_id !== user.id) {
+            if (household && household.owner_id !== authUser.id) {
               setPartnerInfo({ userId: household.owner_id, email: "" });
               // Get partner's first active account
               const { data: partnerAccounts } = await supabase
@@ -242,7 +244,7 @@ export default function TransactionDetailPage({
 
           // Set current user's name as default counterparty
           setPartnerCounterpartyName(
-            user.user_metadata?.full_name || user.email?.split("@")[0] || ""
+            authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || ""
           );
         }
       }

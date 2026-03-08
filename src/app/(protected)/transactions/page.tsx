@@ -155,11 +155,8 @@ function TransactionsContent() {
       txQuery = txQuery.eq("is_shared", true).eq("paid_by_other", false);
     }
 
-    // Build accounts query with optional user filter
-    let accountsQuery = supabase.from("accounts").select("*").eq("is_active", true).order("name");
-    if (filterByUser && user?.id) {
-      accountsQuery = accountsQuery.eq("user_id", user.id);
-    }
+    // Build accounts query - always filter by user
+    let accountsQuery = supabase.from("accounts").select("*").eq("is_active", true).eq("user_id", user?.id ?? "").order("name");
 
     // Fetch in parallel
     const [txResponse, accountsResponse, categoriesResponse] = await Promise.all([

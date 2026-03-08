@@ -49,7 +49,7 @@ export default function TransferPage() {
       setIsLoading(true);
 
       const [accountsRes, categoriesRes] = await Promise.all([
-        supabase.from("accounts").select("*").eq("is_active", true).order("name"),
+        supabase.from("accounts").select("*").eq("is_active", true).eq("user_id", user?.id ?? "").order("name"),
         supabase.from("categories").select("*").eq("is_active", true),
       ]);
 

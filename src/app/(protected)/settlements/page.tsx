@@ -123,6 +123,7 @@ export default function SettlementsPage() {
       .from("accounts")
       .select("*")
       .eq("is_active", true)
+      .eq("user_id", user?.id ?? "")
       .order("name");
 
     if (accountsData) {

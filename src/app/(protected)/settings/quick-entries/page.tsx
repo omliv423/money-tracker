@@ -73,7 +73,7 @@ export default function QuickEntriesPage() {
         `)
         .eq("user_id", user?.id ?? "")
         .order("use_count", { ascending: false }),
-      supabase.from("accounts").select("*").eq("is_active", true).order("name"),
+      supabase.from("accounts").select("*").eq("is_active", true).eq("user_id", user?.id ?? "").order("name"),
       supabase.from("categories").select("*").eq("is_active", true).order("name"),
     ]);
 
