@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Check, Calendar, Wallet, FileText, CreditCard, AlertTriangle, UserPlus } from "lucide-react";
+import { Plus, Check, Calendar, Wallet, FileText, CreditCard, AlertTriangle, UserPlus, Users } from "lucide-react";
 import { format, differenceInMonths, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,10 @@ export function TransactionForm() {
   const [paidByCounterpartyId, setPaidByCounterpartyId] = useState<string | null>(null); // 立替えてくれた人のID
   const [newCounterpartyName, setNewCounterpartyName] = useState(""); // 新規相手先名
   const [showNewCounterpartyInput, setShowNewCounterpartyInput] = useState(false);
+  const [isShared, setIsShared] = useState(false);
+  const [splitRatio, setSplitRatio] = useState(65);
+  const [customRatioInput, setCustomRatioInput] = useState("");
+  const [partnerName, setPartnerName] = useState("パートナー");
   const [lines, setLines] = useState<LineItemData[]>([
     {
       id: generateId(),
@@ -89,9 +93,15 @@ export function TransactionForm() {
       ]);
 
       if (accountsRes.data) {
-        setAccounts(accountsRes.data);
-        if (accountsRes.data.length > 0) {
-          setAccountId(accountsRes.data[0].id);
+        const accts = accountsRes.data as Account[];
+        setAccounts(accts);
+        if (accts.length > 0) {
+          setAccountId(accts[0].id);
+        }
+        // 共有口座のpartner_nameがあれば初期値に設定
+        const sharedAccount = accts.find((a) => a.is_shared && a.partner_name);
+        if (sharedAccount?.partner_name) {
+          setPartnerName(sharedAccount.partner_name);
         }
       }
       if (categoriesRes.data) {
@@ -189,37 +199,74 @@ export function TransactionForm() {
     }
   };
 
-  // 共有口座選択時に自動で分割比率を設定
+  // 口座変更時の処理
   const handleAccountChange = (newAccountId: string) => {
     setAccountId(newAccountId);
 
     const selectedAccount = accounts.find((a) => a.id === newAccountId);
-    // 共有口座の場合、設定された比率で自動分割
-    if (selectedAccount?.is_shared && lines.length === 1 && totalAmount > 0) {
-      const splitRatio = selectedAccount.default_split_ratio ?? 50;
+    // 共有口座の場合、共有トグルと比率を初期設定
+    if (selectedAccount?.is_shared) {
+      setIsShared(true);
+      setSplitRatio(selectedAccount.default_split_ratio ?? 50);
+      setCustomRatioInput("");
+      if (selectedAccount.partner_name) {
+        setPartnerName(selectedAccount.partner_name);
+      }
+    }
+  };
+
+  // 共有トグル・比率変更時のlines自動分割
+  useEffect(() => {
+    if (totalAmount <= 0) return;
+
+    if (isShared) {
       const myAmount = Math.round(totalAmount * (splitRatio / 100));
       const partnerAmount = totalAmount - myAmount;
 
-      // パートナー名を取得（partner_nameまたはデフォルト）
-      const partnerName = selectedAccount.partner_name || "パートナー";
+      // 既にassetラインがある場合は金額だけ更新
+      const expenseLines = lines.filter((l) => l.lineType !== "asset" || !l.counterparty);
+      const assetLine = lines.find((l) => l.lineType === "asset" && l.counterparty);
 
-      setLines([
-        {
-          ...lines[0],
-          amount: myAmount,
-        },
-        {
-          id: generateId(),
-          amount: partnerAmount,
-          categoryId: lines[0].categoryId,
-          lineType: "asset",
-          counterparty: partnerName,
-          amortizationMonths: 1,
-          amortizationEndDate: null,
-        },
-      ]);
+      if (assetLine) {
+        // 既存のassetラインを更新
+        setLines(
+          lines.map((l) => {
+            if (l === assetLine) {
+              return { ...l, amount: partnerAmount, counterparty: partnerName };
+            }
+            if (l.lineType === "expense" && expenseLines.length === 1 && l === expenseLines[0]) {
+              return { ...l, amount: myAmount };
+            }
+            return l;
+          })
+        );
+      } else if (lines.length === 1) {
+        // 1行のみの場合、分割して2行にする
+        setLines([
+          { ...lines[0], amount: myAmount },
+          {
+            id: generateId(),
+            amount: partnerAmount,
+            categoryId: lines[0].categoryId,
+            lineType: "asset",
+            counterparty: partnerName,
+            amortizationMonths: 1,
+            amortizationEndDate: null,
+          },
+        ]);
+      }
+    } else {
+      // 共有OFF: assetラインを削除し、expenseをtotalAmountに戻す
+      const nonAssetLines = lines.filter((l) => !(l.lineType === "asset" && l.counterparty));
+      if (nonAssetLines.length > 0 && nonAssetLines.length !== lines.length) {
+        if (nonAssetLines.length === 1) {
+          setLines([{ ...nonAssetLines[0], amount: totalAmount }]);
+        } else {
+          setLines(nonAssetLines);
+        }
+      }
     }
-  };
+  }, [isShared, splitRatio, partnerName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 重複チェック関数
   const checkForDuplicates = async () => {
@@ -305,6 +352,7 @@ export function TransactionForm() {
           is_cash_settled: isCashSettled,
           settled_amount: settledAmount,
           paid_by_other: paidByOther,
+          is_shared: isShared,
         })
         .select()
         .single();
@@ -376,6 +424,9 @@ export function TransactionForm() {
       setPaidByCounterpartyId(null);
       setNewCounterpartyName("");
       setShowNewCounterpartyInput(false);
+      setIsShared(false);
+      setSplitRatio(65);
+      setCustomRatioInput("");
       setLines([
         {
           id: generateId(),
@@ -571,11 +622,6 @@ export function TransactionForm() {
                       {account.owner === "shared" && (
                         <span className="ml-1 text-xs text-muted-foreground">(共同)</span>
                       )}
-                      {account.is_shared && (
-                        <span className="ml-1 text-xs text-blue-500">
-                          [{account.default_split_ratio}:{100 - (account.default_split_ratio ?? 50)}]
-                        </span>
-                      )}
                     </SelectItem>
                   ))}
                   {!isIncomeTransaction && (
@@ -652,6 +698,119 @@ export function TransactionForm() {
                 </div>
               )}
             </div>
+
+            {/* Shared Toggle */}
+            {!paidByOther && (
+              <div className="bg-card rounded-xl p-4 border border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium flex items-center gap-1.5">
+                    <Users className="w-4 h-4" /> 共有する
+                  </label>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isShared}
+                    onClick={() => setIsShared(!isShared)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      isShared ? "bg-primary" : "bg-muted-foreground/30"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        isShared ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {isShared && (
+                  <div className="space-y-3 pt-1">
+                    {/* Ratio Presets */}
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">比率</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          { label: "65:35", value: 65 },
+                          { label: "50:50", value: 50 },
+                          { label: "70:30", value: 70 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            onClick={() => {
+                              setSplitRatio(preset.value);
+                              setCustomRatioInput("");
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                              splitRatio === preset.value && customRatioInput === ""
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setCustomRatioInput(String(splitRatio))}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            customRatioInput !== ""
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-accent"
+                          }`}
+                        >
+                          カスタム
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Custom Ratio Input */}
+                    {customRatioInput !== "" && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">自分</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={customRatioInput}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomRatioInput(val);
+                            const num = parseInt(val, 10);
+                            if (!isNaN(num) && num >= 1 && num <= 99) {
+                              setSplitRatio(num);
+                            }
+                          }}
+                          className="w-16 text-center"
+                        />
+                        <span className="text-muted-foreground">%</span>
+                        <span className="text-muted-foreground mx-1">:</span>
+                        <span className="text-muted-foreground">{partnerName}</span>
+                        <span className="font-medium">{100 - splitRatio}%</span>
+                      </div>
+                    )}
+
+                    {/* Partner Name */}
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">パートナー名</label>
+                      <Input
+                        type="text"
+                        value={partnerName}
+                        onChange={(e) => setPartnerName(e.target.value)}
+                        placeholder="パートナー"
+                      />
+                    </div>
+
+                    {/* Preview */}
+                    {totalAmount > 0 && (
+                      <div className="text-xs text-muted-foreground bg-muted rounded-lg p-2">
+                        自分: ¥{Math.round(totalAmount * splitRatio / 100).toLocaleString("ja-JP")} / {partnerName}: ¥{(totalAmount - Math.round(totalAmount * splitRatio / 100)).toLocaleString("ja-JP")}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Description */}
             <div className="space-y-1">
