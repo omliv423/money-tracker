@@ -4,9 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, ChevronLeft, Tag, PieChart as PieChartIcon, Landmark, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Wallet, CreditCard, Users, ChevronDown, ChevronRight, ChevronLeft, Tag, PieChart as PieChartIcon, Landmark, TrendingUp, TrendingDown } from "lucide-react";
 import { supabase, type Tables } from "@/lib/supabase";
-import { useViewMode } from "@/components/providers/ViewModeProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
 import {
   PieChart,
@@ -82,7 +81,6 @@ interface AccountReceivable {
 
 export default function BSReportPage() {
   const router = useRouter();
-  const { filterByUser } = useViewMode();
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -145,7 +143,7 @@ export default function BSReportPage() {
         .select("*")
         .eq("is_active", true)
         .order("name");
-      if (filterByUser && user?.id) {
+      if (user?.id) {
         accountsQuery = accountsQuery.eq("user_id", user.id);
       }
       const { data: accountData } = await accountsQuery;
@@ -169,7 +167,7 @@ export default function BSReportPage() {
           transaction_lines(amount, line_type)
         `)
         .order("date", { ascending: true });
-      if (filterByUser && user?.id) {
+      if (user?.id) {
         txQuery = txQuery.eq("user_id", user.id);
       }
       const { data: allTransactions } = await txQuery;
@@ -516,7 +514,7 @@ export default function BSReportPage() {
     }
 
     fetchData();
-  }, [selectedMonth, filterByUser, user?.id]);
+  }, [selectedMonth, user?.id]);
 
   const toggleAccountExpand = (accountId: string) => {
     setExpandedAccounts((prev) => {
@@ -605,15 +603,7 @@ export default function BSReportPage() {
           </div>
         </div>
 
-        {/* Shared mode warning banner */}
-        {!filterByUser && (
-          <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>BSレポートは共有フィルタが適用されません。全データが表示されています。</span>
-          </div>
-        )}
-
-        <div className="space-y-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0">
+<div className="space-y-6 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:gap-6 lg:space-y-0">
           <div className="space-y-4 lg:order-2 lg:sticky lg:top-24 lg:self-start">
             {/* Summary Cards */}
             <div className="grid grid-cols-3 gap-2 lg:grid-cols-1 lg:gap-3">
