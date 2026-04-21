@@ -109,6 +109,11 @@ export default function SettlementsPage() {
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // 確認画面の入金情報
+  const [confirmDepositAmount, setConfirmDepositAmount] = useState("");
+  const [confirmDepositDate, setConfirmDepositDate] = useState<Date | null>(new Date());
+  const [selectedDebtLines, setSelectedDebtLines] = useState<Set<string>>(new Set());
+
   // Edit mode
   const [editingSettlement, setEditingSettlement] = useState<Settlement | null>(null);
 
@@ -322,8 +327,23 @@ export default function SettlementsPage() {
     const settlementAmount = liabilityTotal - assetTotal;
     const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "自分";
 
-    return { selectedList, assetTotal, liabilityTotal, total, settlementAmount, userName };
-  }, [selectedLines, allLinesForCounterparty, user]);
+    // 入金額からの残り計算
+    const depositAmount = parseInt(confirmDepositAmount, 10) || 0;
+    const remainder = depositAmount > 0 ? Math.max(0, depositAmount - assetTotal) : 0;
+
+    // 未選択の立替ライン（残りを充当する先の候補）
+    const unselectedAssetLines = allLinesForCounterparty
+      .filter((l) => !selectedLines.has(l.id) && l.lineType === "asset")
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // ユーザーが選択した充当先のみ計算
+    const chosenDebtLines = unselectedAssetLines.filter((l) => selectedDebtLines.has(l.id));
+    const totalChosenDebt = chosenDebtLines.reduce((sum, l) => sum + l.unsettledAmount, 0);
+    const applyToDebt = Math.min(remainder, totalChosenDebt);
+    const leftover = remainder - applyToDebt;
+
+    return { selectedList, assetTotal, liabilityTotal, total, settlementAmount, userName, depositAmount, remainder, unselectedAssetLines, chosenDebtLines, applyToDebt, leftover };
+  }, [selectedLines, allLinesForCounterparty, user, confirmDepositAmount, selectedDebtLines]);
 
   // --- ハンドラー ---
 
@@ -394,27 +414,42 @@ export default function SettlementsPage() {
     setActiveCounterparty(null);
   };
 
-  // 精算する（確認画面から）
+  // 精算する（確認画面から）— 入金 + 明細精算 + 残額充当を統合
   const handleSettleFromConfirm = async () => {
     if (!activeCounterparty) return;
     setIsSaving(true);
 
     const selectedList = allLinesForCounterparty.filter((l) => selectedLines.has(l.id));
+    const depositAmount = parseInt(confirmDepositAmount, 10) || 0;
+    const assetTotal = selectedList
+      .filter((l) => l.lineType === "asset")
+      .reduce((sum, l) => sum + l.unsettledAmount, 0);
 
-    // 1. 精算記録を作成
+    // 1. 精算記録を作成（入金額があればその金額、なければ0）
+    const settlementDate = confirmDepositDate
+      ? format(confirmDepositDate, "yyyy-MM-dd")
+      : format(new Date(), "yyyy-MM-dd");
+
     const { data: newSettlement } = await supabase
       .from("settlements")
       .insert({
         user_id: user?.id,
-        date: format(new Date(), "yyyy-MM-dd"),
+        date: settlementDate,
         counterparty: activeCounterparty,
-        amount: 0,
-        note: "精算",
+        amount: depositAmount,
+        note: depositAmount > 0 ? null : "精算",
+        account_id: depositAmount > 0 ? selectedAccountId || null : null,
+        type: "receive",
       })
       .select()
       .single();
 
-    // 2. 各項目を精算済みに更新
+    if (!newSettlement) {
+      setIsSaving(false);
+      return;
+    }
+
+    // 2. 選択した項目を精算済みに更新
     const settlementItems: { settlement_id: string; transaction_line_id: string; amount: number }[] = [];
 
     for (const line of selectedList) {
@@ -427,21 +462,86 @@ export default function SettlementsPage() {
         })
         .eq("id", line.id);
 
-      if (newSettlement) {
+      settlementItems.push({
+        settlement_id: newSettlement.id,
+        transaction_line_id: line.id,
+        amount: line.unsettledAmount,
+      });
+    }
+
+    // 3. 残額をユーザーが選択した債権に充当
+    let remainder = depositAmount > 0 ? Math.max(0, depositAmount - assetTotal) : 0;
+
+    if (remainder > 0) {
+      const chosenDebtLines = allLinesForCounterparty
+        .filter((l) => !selectedLines.has(l.id) && l.lineType === "asset" && selectedDebtLines.has(l.id))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      for (const line of chosenDebtLines) {
+        if (remainder <= 0) break;
+
+        const applyAmount = Math.min(remainder, line.unsettledAmount);
+        const newSettledAmount = line.settledAmount + applyAmount;
+
+        await supabase
+          .from("transaction_lines")
+          .update({
+            settled_amount: newSettledAmount,
+            is_settled: newSettledAmount >= line.amount,
+          })
+          .eq("id", line.id);
+
         settlementItems.push({
           settlement_id: newSettlement.id,
           transaction_line_id: line.id,
-          amount: line.unsettledAmount,
+          amount: applyAmount,
         });
+
+        remainder -= applyAmount;
       }
     }
 
-    // 3. settlement_items を一括insert
+    // 4. settlement_items を一括insert
     if (settlementItems.length > 0) {
       await (supabase as any).from("settlement_items").insert(settlementItems);
     }
 
+    // 5. 口座残高を更新
+    if (depositAmount > 0 && selectedAccountId) {
+      const selectedAccount = cashAccounts.find((a) => a.id === selectedAccountId);
+      if (selectedAccount) {
+        const currentBalance = selectedAccount.current_balance ?? selectedAccount.opening_balance ?? 0;
+        await supabase
+          .from("accounts")
+          .update({ current_balance: currentBalance + depositAmount })
+          .eq("id", selectedAccountId);
+      }
+    }
+
+    // 6. 余りがあればsettlement_balancesに加算
+    if (remainder > 0) {
+      const existingBalance = getBalance(activeCounterparty);
+      if (existingBalance) {
+        await supabase
+          .from("settlement_balances")
+          .update({ receive_balance: existingBalance.receive_balance + remainder })
+          .eq("id", existingBalance.id);
+      } else {
+        await supabase
+          .from("settlement_balances")
+          .insert({
+            user_id: user?.id,
+            counterparty: activeCounterparty,
+            receive_balance: remainder,
+            pay_balance: 0,
+          });
+      }
+    }
+
     setSelectedLines(new Set());
+    setSelectedDebtLines(new Set());
+    setConfirmDepositAmount("");
+    setConfirmDepositDate(new Date());
     setViewMode("list");
     setActiveCounterparty(null);
     setIsSaving(false);
@@ -1000,7 +1100,12 @@ export default function SettlementsPage() {
                         </Button>
                         <Button
                           className="flex-1 rounded-xl"
-                          onClick={() => setViewMode("confirm")}
+                          onClick={() => {
+                            setConfirmDepositAmount("");
+                            setConfirmDepositDate(new Date());
+                            setSelectedDebtLines(new Set());
+                            setViewMode("confirm");
+                          }}
                         >
                           <Check className="w-4 h-4 mr-1" />
                           精算する
@@ -1148,11 +1253,133 @@ export default function SettlementsPage() {
                 </div>
               </motion.div>
 
-              {/* 精算するボタン */}
+              {/* 入金情報 */}
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
+                className="bg-card rounded-2xl border border-border p-4 space-y-4"
+              >
+                <p className="text-xs font-medium text-muted-foreground tracking-wide">
+                  入金情報（任意）
+                </p>
+
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">入金額</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">¥</span>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={confirmDepositAmount}
+                      onChange={(e) => setConfirmDepositAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                      className="h-10 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
+                  </div>
+                </div>
+
+                {confirmData.depositAmount > 0 && (
+                  <>
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-1 block">入金日</label>
+                      <DatePicker
+                        value={confirmDepositDate}
+                        onChange={(date) => setConfirmDepositDate(date ?? null)}
+                        placeholder="日付を選択"
+                      />
+                    </div>
+
+                    {cashAccounts.length > 0 && (
+                      <div>
+                        <label className="text-sm text-muted-foreground mb-1 block">受取口座</label>
+                        <Select
+                          value={selectedAccountId}
+                          onValueChange={setSelectedAccountId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="口座を選択" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cashAccounts.map((acc) => (
+                              <SelectItem key={acc.id} value={acc.id}>
+                                {acc.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {/* 内訳表示 */}
+                    <div className="bg-secondary/30 rounded-xl p-3 space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">選択した項目</span>
+                        <span className="font-mono">¥{confirmData.assetTotal.toLocaleString()}</span>
+                      </div>
+                      {confirmData.applyToDebt > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">債権に充当</span>
+                          <span className="font-mono">¥{confirmData.applyToDebt.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {confirmData.leftover > 0 && (
+                        <div className="flex justify-between text-amber-600">
+                          <span>余り（精算可能金額に加算）</span>
+                          <span className="font-mono">¥{confirmData.leftover.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between border-t border-border pt-2 font-medium">
+                        <span>合計</span>
+                        <span className="font-mono">¥{confirmData.depositAmount.toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    {/* 残額の充当先選択 */}
+                    {confirmData.remainder > 0 && confirmData.unselectedAssetLines.length > 0 && (
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          残り ¥{confirmData.remainder.toLocaleString()} の充当先を選択
+                        </p>
+                        <div className="bg-card rounded-xl border border-border divide-y divide-border overflow-hidden">
+                          {confirmData.unselectedAssetLines.map((line) => (
+                            <label
+                              key={line.id}
+                              className="flex items-center gap-3 text-sm py-3 px-3 hover:bg-secondary/30 cursor-pointer transition-colors"
+                            >
+                              <Checkbox
+                                checked={selectedDebtLines.has(line.id)}
+                                onCheckedChange={() => {
+                                  setSelectedDebtLines((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(line.id)) {
+                                      next.delete(line.id);
+                                    } else {
+                                      next.add(line.id);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="truncate font-medium">{line.description}</p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  残高 ¥{line.unsettledAmount.toLocaleString()}
+                                </p>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </motion.div>
+
+              {/* 精算するボタン */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35 }}
               >
                 <Button
                   className="w-full h-12 text-base font-medium rounded-xl"
@@ -1160,7 +1387,7 @@ export default function SettlementsPage() {
                   onClick={handleSettleFromConfirm}
                   disabled={isSaving}
                 >
-                  {isSaving ? "処理中..." : "精算する"}
+                  {isSaving ? "処理中..." : confirmData.depositAmount > 0 ? "入金 & 精算する" : "精算する"}
                 </Button>
               </motion.div>
             </div>
