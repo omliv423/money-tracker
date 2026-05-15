@@ -81,6 +81,43 @@ export function TransactionForm() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+  const [partnerInfo, setPartnerInfo] = useState<{ userId: string; accountId: string } | null>(null);
+
+  // Load partner info (同一世帯の他メンバー)
+  useEffect(() => {
+    async function fetchPartnerInfo() {
+      if (!user?.id) return;
+      const { data: myMember } = await supabase
+        .from("household_members")
+        .select("household_id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle();
+      const householdId = myMember?.household_id;
+      if (!householdId) return;
+
+      const { data: members } = await supabase
+        .from("household_members")
+        .select("user_id")
+        .eq("household_id", householdId)
+        .eq("status", "active")
+        .neq("user_id", user.id);
+      const partnerId = members?.[0]?.user_id;
+      if (!partnerId) return;
+
+      const { data: partnerAccounts } = await supabase
+        .from("accounts")
+        .select("id")
+        .eq("user_id", partnerId)
+        .eq("is_active", true)
+        .order("name")
+        .limit(1);
+      if (partnerAccounts?.[0]) {
+        setPartnerInfo({ userId: partnerId, accountId: partnerAccounts[0].id });
+      }
+    }
+    fetchPartnerInfo();
+  }, [user]);
 
   // Fetch accounts, categories, and counterparties on mount
   useEffect(() => {
@@ -414,6 +451,34 @@ export function TransactionForm() {
         .select();
 
       if (linesError) throw linesError;
+
+      // partner mirror 自動作成: asset line で counterparty が partnerName と一致するものがあれば
+      const partnerAssetTotal = lines
+        .filter((l) => l.lineType === "asset" && l.counterparty === partnerName)
+        .reduce((sum, l) => sum + l.amount, 0);
+      if (partnerInfo && partnerAssetTotal > 0) {
+        const partnerCategoryId =
+          lines.find((l) => l.lineType === "asset" && l.counterparty === partnerName)?.categoryId ||
+          lines[0].categoryId;
+        const selfNameForPartner =
+          (user?.user_metadata?.full_name as string | undefined) ||
+          user?.email?.split("@")[0] ||
+          "パートナー";
+        const { error: rpcError } = await supabase.rpc("create_partner_transaction", {
+          p_partner_user_id: partnerInfo.userId,
+          p_date: accrualDate,
+          p_description: description,
+          p_amount: partnerAssetTotal,
+          p_account_id: partnerInfo.accountId,
+          p_category_id: partnerCategoryId,
+          p_counterparty_name: selfNameForPartner,
+          p_is_shared: isShared,
+        });
+        if (rpcError) {
+          console.error("Partner mirror creation failed:", rpcError);
+          // 自分側は保存済みなのでエラーにせず警告のみ
+        }
+      }
 
       // Reset form
       setTotalAmount(0);
