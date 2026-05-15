@@ -506,6 +506,11 @@ export default function SettlementsPage() {
       await (supabase as any).from("settlement_items").insert(settlementItems);
     }
 
+    // 4.5. パートナー側にも mirror settlement を作成 (counterparty_user_id があれば)
+    await (supabase as any).rpc("create_partner_settlement_mirror", {
+      p_source_settlement_id: newSettlement.id,
+    });
+
     // 5. 口座残高を更新
     if (depositAmount > 0 && selectedAccountId) {
       const selectedAccount = cashAccounts.find((a) => a.id === selectedAccountId);
@@ -615,7 +620,7 @@ export default function SettlementsPage() {
           .insert(insertData);
       }
 
-      await supabase
+      const { data: newDepositSettlement } = await supabase
         .from("settlements")
         .insert({
           user_id: user?.id,
@@ -623,7 +628,15 @@ export default function SettlementsPage() {
           counterparty: selectedCounterparty,
           amount: signedAmount,
           note: depositNote || null,
+        })
+        .select()
+        .single();
+
+      if (newDepositSettlement) {
+        await (supabase as any).rpc("create_partner_settlement_mirror", {
+          p_source_settlement_id: newDepositSettlement.id,
         });
+      }
 
       if (selectedAccountId && amount > 0) {
         const selectedAccount = cashAccounts.find((a) => a.id === selectedAccountId);
